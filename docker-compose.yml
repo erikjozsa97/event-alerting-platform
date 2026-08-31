@@ -1,0 +1,35 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: eventalert-postgres
+    environment:
+      POSTGRES_DB: ${DB_NAME:-eventalert}
+      POSTGRES_USER: ${DB_USER:-eventalert}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-eventalert}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-eventalert}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    container_name: eventalert-app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-eventalert}
+      DB_USER: ${DB_USER:-eventalert}
+      DB_PASSWORD: ${DB_PASSWORD:-eventalert}
+    ports:
+      - "8080:8080"
+
+volumes:
+  pgdata:
