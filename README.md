@@ -4,14 +4,16 @@ Public self-serve platform where users define alert rules for news, market
 moves, and natural disasters, and get notified over email/Slack (more
 channels later).
 
-**Status:** M0 (foundation), M1 (auth), M2 (alert rules & channels) complete.
+**Status:** M0 (foundation), M1 (auth), M2 (alert rules & channels), M3
+(notifications) complete.
 
 ## Stack
 - Java 17
-- Spring Boot 3.2.5 — Web, JDBC (`NamedParameterJdbcTemplate`, no JPA/Hibernate), Security, Validation, Actuator
+- Spring Boot 3.2.5 — Web, JDBC (`NamedParameterJdbcTemplate`, no JPA/Hibernate), Security, Validation, Mail, Actuator
 - PostgreSQL 16
 - Flyway
 - JJWT for token issuing/parsing
+- MailHog (dev-only fake SMTP server + web UI)
 - Docker / Docker Compose
 
 ## Architecture: layered (Model / View / Controller / Service / Repository)
@@ -27,23 +29,26 @@ src/main/java/com/eventalert/
   model/        domain classes + request payloads
     User, Role, RegisterRequest, LoginRequest, AuthResponse
     Category, ChannelType, AlertRule, Channel, AlertRuleRequest, ChannelRequest
+    Delivery, DeliveryStatus, NotificationMessage, TestNotificationRequest
 
   view/         what actually leaves the API — never the model classes directly
     UserView              hides passwordHash entirely (not just @JsonIgnore)
     AlertRuleView
     ChannelView            masks the Slack webhook URL in config
+    DeliveryView
 
   controller/   REST endpoints
     AuthController, AlertRuleController, ChannelController
     GlobalExceptionHandler
 
   service/      business logic
-    AuthService, AlertRuleService, ChannelService
+    AuthService, AlertRuleService, ChannelService, DeliveryService
     CriteriaValidator (+ News/Market/Disaster impls) + CriteriaValidatorDispatcher
     ChannelConfigValidator (+ Email/Slack impls) + ChannelConfigValidatorDispatcher
+    NotificationChannel (+ Email/Slack impls) + NotificationChannelDispatcher
 
   repository/   data access — JdbcTemplate only, no Spring Data JPA
-    UserRepository, AlertRuleRepository, ChannelRepository
+    UserRepository, AlertRuleRepository, ChannelRepository, DeliveryRepository
 
   security/     JWT + Spring Security wiring
     JwtService, JwtAuthenticationFilter, SecurityConfig,
@@ -52,11 +57,13 @@ src/main/java/com/eventalert/
   exception/    domain exceptions, mapped to HTTP responses by GlobalExceptionHandler
     EmailAlreadyExistsException, InvalidCredentialsException,
     InvalidCriteriaException, InvalidChannelConfigException,
-    AlertRuleNotFoundException, ChannelNotFoundException
+    AlertRuleNotFoundException, ChannelNotFoundException,
+    NotificationDeliveryException, NoChannelsLinkedException
 
 src/main/resources/
-  application.yml                   config (env-driven datasource, JWT secret)
-  db/migration/V1__init_schema.sql  full v1 schema
+  application.yml                            config (datasource, JWT secret, mail)
+  db/migration/V1__init_schema.sql            full v1 schema
+  db/migration/V2__deliveries_event_id_nullable.sql   see note below
 
 postman/
   event-alerting-platform.postman_collection.json   importable collection, see below
@@ -73,6 +80,16 @@ channel), so `ChannelView` masks it before it's serialized, which
 `@JsonIgnore` on a top-level field could never do for something buried
 inside a `Map`.
 
+### Why `deliveries.event_id` is nullable (V2 migration)
+
+Real event ingestion is M4, not built yet. So M3 ships a manual
+**"send test notification"** endpoint (see below) that exercises the full
+send path — validation, dispatch, retry, delivery logging — without a real
+ingested event behind it. Those test sends have no `event_id`, so the
+original `NOT NULL` constraint from V1 had to relax. Once M4 lands,
+ingestion-triggered deliveries will still always set `event_id`; this only
+opened the door for the manual-test path.
+
 ## Run everything with Docker
 ```bash
 docker compose up --build
@@ -80,16 +97,17 @@ docker compose up --build
 - App: http://localhost:8080
 - Health check: http://localhost:8080/actuator/health
 - Postgres: localhost:5432 (db/user/pass default to `eventalert` — see `.env.example`)
+- MailHog web UI: http://localhost:8025 — every email the app sends shows up here instead of a real inbox
 
 ## Run from IntelliJ (recommended while developing)
 1. Open this folder in IntelliJ as a Maven project (it'll auto-import).
-2. Start just the database: `docker compose up -d postgres`
+2. Start the database and mail server: `docker compose up -d postgres mailhog`
 3. Run `EventAlertingApplication` from IntelliJ — it connects to
-   `localhost:5432` by default (see `application.yml`).
-4. Flyway applies `V1__init_schema.sql` automatically on startup; check the
+   `localhost:5432` and `localhost:1025` (mail) by default (see `application.yml`).
+4. Flyway applies both migrations automatically on startup; check the
    console log for confirmation.
 
-To use custom DB credentials, copy `.env.example` to `.env` and adjust —
+To use custom DB/mail settings, copy `.env.example` to `.env` and adjust —
 `docker compose` picks it up automatically, and you can export the same
 variables in your IntelliJ run configuration for local runs.
 
@@ -107,6 +125,7 @@ collection variable with a default already set.
 | `token` | Set automatically by **Auth → Login**'s test script |
 | `channel_id` | Set automatically by **Channels → Create Channel - Slack** |
 | `alert_rule_id` | Set automatically by **Alert Rules → Create Alert Rule - Disaster** |
+| `news_rule_id` | Set automatically by **Alert Rules → Create Alert Rule - News** (has no channels linked — used to test the "no channels" error) |
 
 **Suggested run order** (each request has test-tab assertions that show
 pass/fail in Postman's Test Results):
@@ -120,12 +139,18 @@ pass/fail in Postman's Test Results):
 3. `Alert Rules → Create Alert Rule - News / Market / Disaster` — the
    Disaster request uses `{{channel_id}}` and saves `{{alert_rule_id}}`, then
    `List / Get / Update / Delete` all use it.
-4. `Validation examples (expected to fail)` — deliberately malformed
+4. `Notifications → Send Test Notification` — sends through every channel
+   linked to `{{alert_rule_id}}` (the Disaster rule) and returns one
+   delivery-log entry per channel. With `docker compose up` running, the
+   EMAIL delivery should come back `SENT` — check
+   [http://localhost:8025](http://localhost:8025) to see it. The SLACK
+   delivery will come back `FAILED` against the placeholder webhook URL,
+   which is expected.
+5. `Validation examples (expected to fail)` — deliberately malformed
    requests (missing keywords, out-of-range magnitude, bad webhook URL,
-   duplicate email, wrong password, no token) that should each return the
-   4xx status asserted in their test script. Good for confirming the
-   hand-rolled validators actually reject bad input, not just accept good
-   input.
+   duplicate email, wrong password, no token, notifying a rule with no
+   channels linked) that should each return the 4xx status asserted in
+   their test script.
 
 Run the whole thing unattended with **Runner** (top toolbar) or
 `newman run postman/event-alerting-platform.postman_collection.json` if you
@@ -148,6 +173,17 @@ Anything that doesn't match these shapes is rejected with a 400 before it
 reaches the database — see `service/NewsCriteriaValidator.java`,
 `MarketCriteriaValidator.java`, `DisasterCriteriaValidator.java`.
 
+## Sending a notification (M3)
+
+`POST /api/alert-rules/{id}/test-notification` with `{"title": "...", "body": "..."}`
+sends that message through every channel linked to the rule and returns one
+`DeliveryView` per channel. Each send is retried up to 3 times (linear
+backoff) before being logged as `FAILED`; a `deliveries` row is written
+exactly once per channel, with the final outcome. This is a manual trigger
+standing in for M4's real event-driven dispatch — once ingestion exists, the
+matching engine calls the same `NotificationChannel` / retry / logging code
+this endpoint already exercises.
+
 ## Running tests
 `EventAlertingApplicationTests` boots the full Spring context, which needs a
 reachable Postgres — run `docker compose up -d postgres` first, then:
@@ -161,7 +197,10 @@ M7 — hardening.)
 - **M0** — Runnable Spring Boot skeleton, Docker Compose, full v1 schema via Flyway, Actuator health endpoint
 - **M1** — Registration/login, JWT issuing + validation, `USER`/`ADMIN` roles, stateless Spring Security, layered package structure, JDBC-only data access
 - **M2** — Alert rule + channel CRUD, hand-rolled per-category criteria validation, Slack webhook verification ping on channel creation, dedicated view layer, Postman collection
+- **M3** — `NotificationChannel` abstraction (Email via MailHog, Slack via webhook), retrying delivery dispatch, delivery logging, manual test-notification endpoint
 
-## Next: M3 — Notification Layer
-`NotificationChannel` abstraction, Email + Slack senders wired to actually
-deliver on a match, delivery logging with retry.
+## Next: M4 — Event Ingestion
+`EventSource` interface + scheduler; connectors for news, market, and
+disaster data; normalization into the `events` table; the matching engine
+that turns a real ingested event into calls to the same delivery path M3
+built.

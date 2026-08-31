@@ -16,6 +16,13 @@ services:
       timeout: 5s
       retries: 5
 
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: eventalert-mailhog
+    ports:
+      - "1025:1025"   # SMTP
+      - "8025:8025"   # Web UI — view every email the app sends
+
   app:
     build: .
     container_name: eventalert-app
@@ -28,6 +35,8 @@ services:
       DB_NAME: ${DB_NAME:-eventalert}
       DB_USER: ${DB_USER:-eventalert}
       DB_PASSWORD: ${DB_PASSWORD:-eventalert}
+      MAIL_HOST: mailhog
+      MAIL_PORT: 1025
     ports:
       - "8080:8080"
 

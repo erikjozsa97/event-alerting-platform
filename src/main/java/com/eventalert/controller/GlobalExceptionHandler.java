@@ -6,6 +6,7 @@ import com.eventalert.exception.EmailAlreadyExistsException;
 import com.eventalert.exception.InvalidChannelConfigException;
 import com.eventalert.exception.InvalidCredentialsException;
 import com.eventalert.exception.InvalidCriteriaException;
+import com.eventalert.exception.NoChannelsLinkedException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -30,7 +31,8 @@ public class GlobalExceptionHandler {
         return error(HttpStatus.UNAUTHORIZED, ex.getMessage());
     }
 
-    @ExceptionHandler({InvalidCriteriaException.class, InvalidChannelConfigException.class})
+    @ExceptionHandler({InvalidCriteriaException.class, InvalidChannelConfigException.class,
+            NoChannelsLinkedException.class})
     public ResponseEntity<Map<String, Object>> handleInvalidPayload(RuntimeException ex) {
         return error(HttpStatus.BAD_REQUEST, ex.getMessage());
     }

@@ -1,8 +1,11 @@
 package com.eventalert.controller;
 
 import com.eventalert.model.AlertRuleRequest;
+import com.eventalert.model.TestNotificationRequest;
 import com.eventalert.service.AlertRuleService;
+import com.eventalert.service.DeliveryService;
 import com.eventalert.view.AlertRuleView;
+import com.eventalert.view.DeliveryView;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -23,9 +26,11 @@ import java.util.UUID;
 public class AlertRuleController {
 
     private final AlertRuleService alertRuleService;
+    private final DeliveryService deliveryService;
 
-    public AlertRuleController(AlertRuleService alertRuleService) {
+    public AlertRuleController(AlertRuleService alertRuleService, DeliveryService deliveryService) {
         this.alertRuleService = alertRuleService;
+        this.deliveryService = deliveryService;
     }
 
     @GetMapping
@@ -52,5 +57,13 @@ public class AlertRuleController {
     public ResponseEntity<Void> delete(@PathVariable UUID id) {
         alertRuleService.delete(id);
         return ResponseEntity.noContent().build();
+    }
+
+    // Manual trigger ahead of M4's real event ingestion — sends through every
+    // channel linked to this rule and returns the resulting delivery log rows.
+    @PostMapping("/{id}/test-notification")
+    public List<DeliveryView> sendTestNotification(@PathVariable UUID id,
+                                                     @Valid @RequestBody TestNotificationRequest request) {
+        return deliveryService.sendTestNotification(id, request);
     }
 }

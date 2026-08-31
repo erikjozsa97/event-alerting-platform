@@ -1,8 +1,8 @@
 {
   "info": {
-    "_postman_id": "ccc6ae87-4e67-4d89-b7ef-113c5de1fb2e",
+    "_postman_id": "7e4f8d86-546a-4f43-9ae0-5bf2f98e13fa",
     "name": "Event Alerting Platform",
-    "description": "M1 (auth) + M2 (alert rules & channels) endpoints. Run 'Auth > Register' then 'Auth > Login' first \u2014 Login saves {{token}} automatically for every other request.",
+    "description": "M1 (auth) + M2 (alert rules & channels) + M3 (notifications) endpoints. Run 'Auth > Register' then 'Auth > Login' first \u2014 Login saves {{token}} automatically for every other request.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -23,6 +23,11 @@
     },
     {
       "key": "alert_rule_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "news_rule_id",
       "value": "",
       "type": "string"
     }
@@ -358,7 +363,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Status is 201', () => pm.response.to.have.status(201));"
+                  "pm.test('Status is 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('news_rule_id', pm.response.json().id);"
                 ]
               }
             }
@@ -625,6 +631,70 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('Status is 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Notifications",
+      "item": [
+        {
+          "name": "Send Test Notification",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/alert-rules/{{alert_rule_id}}/test-notification",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "alert-rules",
+                "{{alert_rule_id}}",
+                "test-notification"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Test alert\",\n  \"body\": \"This is a manually triggered test notification from Postman.\"\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "const data = pm.response.json();",
+                  "pm.test('Returns one delivery per linked channel', () => pm.expect(data).to.be.an('array').that.is.not.empty);",
+                  "pm.test('Each delivery has a status of SENT or FAILED', () => {",
+                  "    data.forEach(d => pm.expect(['SENT', 'FAILED']).to.include(d.status));",
+                  "});",
+                  "// EMAIL deliveries should be SENT if MailHog is running (docker compose up).",
+                  "// SLACK deliveries will be FAILED against the placeholder webhook URL from",
+                  "// the Channels folder \u2014 that's expected unless you swapped in a real one.",
+                  "// Check http://localhost:8025 to see any emails MailHog received."
                 ]
               }
             }
@@ -978,6 +1048,56 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('Status is 401 or 403 without a token', () => pm.expect(pm.response.code).to.be.oneOf([401, 403]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Send Test Notification - No Channels Linked",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/alert-rules/{{news_rule_id}}/test-notification",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "alert-rules",
+                "{{news_rule_id}}",
+                "test-notification"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Test alert\",\n  \"body\": \"This is a manually triggered test notification from Postman.\"\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400 (run after Alert Rules > Create Alert Rule - News)', () => pm.response.to.have.status(400));"
                 ]
               }
             }

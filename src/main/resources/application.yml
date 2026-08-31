@@ -12,11 +12,29 @@ spring:
     locations: classpath:db/migration
     baseline-on-migrate: true
 
+  # Defaults target MailHog (docker-compose service `mailhog`, or localhost:1025 when
+  # run from IntelliJ) — a fake SMTP server with a web UI, no real provider needed to
+  # test email delivery end to end. Override for a real provider via env vars.
+  mail:
+    host: ${MAIL_HOST:localhost}
+    port: ${MAIL_PORT:1025}
+    properties:
+      mail:
+        smtp:
+          auth: ${MAIL_SMTP_AUTH:false}
+          starttls:
+            enable: ${MAIL_SMTP_STARTTLS:false}
+
 security:
   jwt:
     # Dev-only default (>=32 bytes for HS256) — override via JWT_SECRET in any real environment.
     secret: ${JWT_SECRET:dev-only-insecure-secret-CHANGE-ME-in-production-please-1234567890}
     expiration-ms: ${JWT_EXPIRATION_MS:86400000}
+
+app:
+  notifications:
+    email:
+      from: ${EMAIL_FROM:alerts@eventalert.local}
 
 management:
   endpoints:
