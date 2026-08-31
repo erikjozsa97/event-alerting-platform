@@ -4,11 +4,6 @@ Public self-serve platform where users define alert rules for news, market
 moves, and natural disasters, and get notified over email/Slack (more
 channels later).
 
-**Status:** M0 (foundation), M1 (auth), M2 (alert rules & channels), M3
-(notifications), M4 (event ingestion & matching), M6 (admin API), M7
-(hardening) complete. M5 (rule matching engine) was folded into M4 rather
-than done separately — see the note in that section below.
-
 ## Stack
 - Java 17
 - Spring Boot 3.2.5 — Web, JDBC (`NamedParameterJdbcTemplate`, no JPA/Hibernate), Security, Validation, Mail, Actuator
@@ -85,23 +80,6 @@ postman/
   event-alerting-platform.postman_collection.json   importable collection, see below
 ```
 
-### Why a view layer instead of `@JsonIgnore`
-
-Controllers never return `model` objects directly — they return `view`
-records, and those records simply don't have a field for anything sensitive.
-For `User`, that means no `passwordHash` field on `UserView` at all. For
-`Channel`, it goes further: the Slack `webhookUrl` inside the generic
-`config` map is a bearer credential, so `ChannelView` masks it before it's
-serialized — something `@JsonIgnore` on a top-level field could never do for
-something buried inside a `Map`.
-
-### Why `deliveries.event_id` is nullable (V2 migration)
-
-M3 shipped a manual **"send test notification"** endpoint before real
-ingestion existed, so it could be tested end to end. Those manual sends have
-no `event_id`. Real ingestion (M4) always sets `event_id` — this migration
-only opened the door for the manual-test path to coexist with it.
-
 ## Run everything with Docker
 ```bash
 docker compose up --build
@@ -123,7 +101,7 @@ To use custom DB/mail/ingestion settings, copy `.env.example` to `.env` and
 adjust — `docker compose` picks it up automatically, and you can export the
 same variables in your IntelliJ run configuration for local runs.
 
-## Event ingestion (M4)
+## Event ingestion
 
 Three `EventSource` implementations, one per category, polled on a schedule
 (`INGESTION_POLL_INTERVAL_MS`, default 2 minutes) and deduped on
@@ -170,7 +148,7 @@ threshold — magnitude 1+ earthquakes happen constantly, so
 very likely produce a real `SENT`/`FAILED` delivery on the next poll. Check
 `GET /api/alert-rules/{id}/deliveries` afterward.
 
-## Admin API (M6)
+## Admin API
 
 Read-only, `ROLE_ADMIN`-gated visibility across every user — this is the
 actual admin view the original brief asked for; `/api/admin/ingestion/poll-now`
@@ -190,7 +168,7 @@ query params match the enum names exactly (`NEWS`, `MARKET`, `DISASTER` /
 `SENT`, `FAILED`, `PENDING`); `since` takes an ISO-8601 timestamp, e.g.
 `2026-08-01T00:00:00Z`.
 
-## Hardening (M7)
+## Hardening
 
 **Observability.** `/actuator/metrics` and `/actuator/prometheus` are now
 exposed (in addition to `health`/`info`), gated by `ROLE_ADMIN` — health and
@@ -295,7 +273,7 @@ reaches the database — see `service/NewsCriteriaValidator.java`,
 matching-time counterparts (`NewsEventMatcher`, `MarketEventMatcher`,
 `DisasterEventMatcher`) apply the same shapes against a real event's payload.
 
-## Sending a notification (M3) / triggering one for real (M4)
+## Sending a notification / triggering one for real
 
 `POST /api/alert-rules/{id}/test-notification` with `{"title": "...", "body": "..."}`
 manually sends through every channel linked to the rule. Real matches from
@@ -310,21 +288,3 @@ mvn test
 ```
 Requires Docker to be running on whatever machine runs the tests (same as
 Testcontainers always does). If Docker isn't available, these tests can't run.
-
-## What's in place so far
-- **M0** — Runnable Spring Boot skeleton, Docker Compose, full v1 schema via Flyway, Actuator health endpoint
-- **M1** — Registration/login, JWT issuing + validation, `USER`/`ADMIN` roles, stateless Spring Security, layered package structure, JDBC-only data access
-- **M2** — Alert rule + channel CRUD, hand-rolled per-category criteria validation, Slack webhook verification ping on channel creation, dedicated view layer, Postman collection
-- **M3** — `NotificationChannel` abstraction (Email via MailHog, Slack via webhook), retrying delivery dispatch, delivery logging, manual test-notification endpoint
-- **M4** — `EventSource` abstraction (USGS live, NewsAPI/Finnhub key-gated), scheduled + on-demand polling, dedup on `(source, external_id)`, `EventMatcher` per category, matches wired into M3's delivery path, `deliveries` listing endpoint. **Folded in what was M5** (rule matching engine) rather than doing it as a separate milestone.
-- **M6** — Read-only Admin API: users, alert rules (with owner), events, deliveries (with owner), and per-source ingestion health
-- **M7** — Metrics (Micrometer/Prometheus), OpenAPI/Swagger docs, in-memory rate limiting, Testcontainers-backed integration tests, async delivery dispatch off the scheduler thread, a fail-fast prod profile
-
-## Where things stand
-Every milestone from the original plan is done (M5 folded into M4, as noted
-above). Nothing currently queued — natural directions from here would be
-things like locking down the self-service `isAdmin` registration flag
-(invite/allowlist, approval step, or an admin-only user-management endpoint
-instead) before this is ever public-facing, a real frontend, or moving the
-rate limiter to a shared store if this ever runs as more than one instance.
-None of that's decided — just flagging where the obvious gaps are.

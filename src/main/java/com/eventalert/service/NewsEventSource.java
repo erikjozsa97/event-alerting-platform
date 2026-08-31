@@ -2,10 +2,9 @@ package com.eventalert.service;
 
 import com.eventalert.model.Category;
 import com.eventalert.model.RawEvent;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.lang.NonNull;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
@@ -36,13 +35,13 @@ public class NewsEventSource implements EventSource {
     }
 
     @Override
-    @NotNull
+    @NonNull
     public Category getCategory() {
         return Category.NEWS;
     }
 
     @Override
-    @NotNull
+    @NonNull
     public String getSourceName() {
         return "newsapi";
     }
@@ -54,7 +53,7 @@ public class NewsEventSource implements EventSource {
 
     @Override
     @SuppressWarnings("unchecked")
-    @NotNull
+    @NonNull
     public List<RawEvent> fetchLatest() {
         if (apiKey == null || apiKey.isBlank()) {
             // No NEWSAPI_KEY configured — this source stays idle rather than failing

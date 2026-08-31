@@ -1,7 +1,6 @@
 package com.eventalert.service;
 
 import com.eventalert.model.Category;
-import org.jetbrains.annotations.NotNull;
 import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Component;
 
@@ -26,7 +25,7 @@ public class NewsEventMatcher implements EventMatcher {
 
     @Override
     @SuppressWarnings("unchecked")
-    public boolean matches(@NotNull Map<String, Object> criteria, @NotNull Map<String, Object> eventPayload) {
+    public boolean matches(@NonNull Map<String, Object> criteria, @NonNull Map<String, Object> eventPayload) {
         Object keywordsRaw = criteria.get("keywords");
         if (!(keywordsRaw instanceof List<?> keywords) || keywords.isEmpty()) {
             return false;
