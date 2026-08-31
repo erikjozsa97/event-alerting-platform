@@ -62,6 +62,12 @@ public class AlertRuleRepository {
         return jdbc.query(sql, params, rowMapper);
     }
 
+    public List<AlertRule> findActiveByCategory(Category category) {
+        String sql = "SELECT * FROM alert_rules WHERE category = :category AND active = true";
+        var params = new MapSqlParameterSource("category", category.name());
+        return jdbc.query(sql, params, rowMapper);
+    }
+
     public void deleteByIdAndUserId(UUID id, UUID userId) {
         String sql = "DELETE FROM alert_rules WHERE id = :id AND user_id = :userId";
         var params = new MapSqlParameterSource().addValue("id", id).addValue("userId", userId);

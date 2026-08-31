@@ -59,11 +59,18 @@ public class AlertRuleController {
         return ResponseEntity.noContent().build();
     }
 
-    // Manual trigger ahead of M4's real event ingestion — sends through every
-    // channel linked to this rule and returns the resulting delivery log rows.
+    // Manual trigger — sends through every channel linked to this rule. Useful for
+    // testing a rule's channels independent of whether a real event has matched yet.
     @PostMapping("/{id}/test-notification")
     public List<DeliveryView> sendTestNotification(@PathVariable UUID id,
                                                      @Valid @RequestBody TestNotificationRequest request) {
         return deliveryService.sendTestNotification(id, request);
+    }
+
+    // Delivery log for this rule — includes both manual test sends and real
+    // ingestion-triggered deliveries from the matching engine (M4).
+    @GetMapping("/{id}/deliveries")
+    public List<DeliveryView> listDeliveries(@PathVariable UUID id) {
+        return deliveryService.listForRule(id);
     }
 }

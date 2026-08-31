@@ -35,6 +35,15 @@ app:
   notifications:
     email:
       from: ${EMAIL_FROM:alerts@eventalert.local}
+  # DISASTER (USGS) needs no key and works out of the box. NEWS and MARKET stay
+  # idle (fetchLatest returns nothing) until their API key env vars are set.
+  ingestion:
+    poll-interval-ms: ${INGESTION_POLL_INTERVAL_MS:120000}
+    newsapi:
+      key: ${NEWSAPI_KEY:}
+    finnhub:
+      key: ${FINNHUB_KEY:}
+      symbols: ${FINNHUB_SYMBOLS:AAPL,MSFT,GOOGL,AMZN,TSLA}
 
 management:
   endpoints:

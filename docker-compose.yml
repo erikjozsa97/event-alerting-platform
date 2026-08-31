@@ -37,6 +37,11 @@ services:
       DB_PASSWORD: ${DB_PASSWORD:-eventalert}
       MAIL_HOST: mailhog
       MAIL_PORT: 1025
+      # Optional — DISASTER (USGS) ingestion works with none of these set.
+      NEWSAPI_KEY: ${NEWSAPI_KEY:-}
+      FINNHUB_KEY: ${FINNHUB_KEY:-}
+      FINNHUB_SYMBOLS: ${FINNHUB_SYMBOLS:-AAPL,MSFT,GOOGL,AMZN,TSLA}
+      INGESTION_POLL_INTERVAL_MS: ${INGESTION_POLL_INTERVAL_MS:-120000}
     ports:
       - "8080:8080"
 

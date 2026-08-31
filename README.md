@@ -5,7 +5,7 @@ moves, and natural disasters, and get notified over email/Slack (more
 channels later).
 
 **Status:** M0 (foundation), M1 (auth), M2 (alert rules & channels), M3
-(notifications) complete.
+(notifications), M4 (event ingestion & matching) complete.
 
 ## Stack
 - Java 17
@@ -24,21 +24,22 @@ cross-cutting concerns rather than being forced into one of them.
 
 ```
 src/main/java/com/eventalert/
-  EventAlertingApplication.java
+  EventAlertingApplication.java   @EnableScheduling for the ingestion poller
 
   model/        domain classes + request payloads
     User, Role, RegisterRequest, LoginRequest, AuthResponse
     Category, ChannelType, AlertRule, Channel, AlertRuleRequest, ChannelRequest
     Delivery, DeliveryStatus, NotificationMessage, TestNotificationRequest
+    Event, RawEvent
 
   view/         what actually leaves the API — never the model classes directly
-    UserView              hides passwordHash entirely (not just @JsonIgnore)
+    UserView               hides passwordHash entirely (not just @JsonIgnore)
     AlertRuleView
-    ChannelView            masks the Slack webhook URL in config
+    ChannelView             masks the Slack webhook URL in config
     DeliveryView
 
   controller/   REST endpoints
-    AuthController, AlertRuleController, ChannelController
+    AuthController, AlertRuleController, ChannelController, AdminController
     GlobalExceptionHandler
 
   service/      business logic
@@ -46,9 +47,12 @@ src/main/java/com/eventalert/
     CriteriaValidator (+ News/Market/Disaster impls) + CriteriaValidatorDispatcher
     ChannelConfigValidator (+ Email/Slack impls) + ChannelConfigValidatorDispatcher
     NotificationChannel (+ Email/Slack impls) + NotificationChannelDispatcher
+    EventSource (+ News/Market/Disaster impls)
+    EventMatcher (+ News/Market/Disaster impls) + EventMatcherDispatcher
+    MatchingService, IngestionScheduler
 
   repository/   data access — JdbcTemplate only, no Spring Data JPA
-    UserRepository, AlertRuleRepository, ChannelRepository, DeliveryRepository
+    UserRepository, AlertRuleRepository, ChannelRepository, DeliveryRepository, EventRepository
 
   security/     JWT + Spring Security wiring
     JwtService, JwtAuthenticationFilter, SecurityConfig,
@@ -61,9 +65,9 @@ src/main/java/com/eventalert/
     NotificationDeliveryException, NoChannelsLinkedException
 
 src/main/resources/
-  application.yml                            config (datasource, JWT secret, mail)
+  application.yml                            config (datasource, JWT secret, mail, ingestion)
   db/migration/V1__init_schema.sql            full v1 schema
-  db/migration/V2__deliveries_event_id_nullable.sql   see note below
+  db/migration/V2__deliveries_event_id_nullable.sql
 
 postman/
   event-alerting-platform.postman_collection.json   importable collection, see below
@@ -75,20 +79,16 @@ Controllers never return `model` objects directly — they return `view`
 records, and those records simply don't have a field for anything sensitive.
 For `User`, that means no `passwordHash` field on `UserView` at all. For
 `Channel`, it goes further: the Slack `webhookUrl` inside the generic
-`config` map is a bearer credential (anyone holding it can post to the
-channel), so `ChannelView` masks it before it's serialized, which
-`@JsonIgnore` on a top-level field could never do for something buried
-inside a `Map`.
+`config` map is a bearer credential, so `ChannelView` masks it before it's
+serialized — something `@JsonIgnore` on a top-level field could never do for
+something buried inside a `Map`.
 
 ### Why `deliveries.event_id` is nullable (V2 migration)
 
-Real event ingestion is M4, not built yet. So M3 ships a manual
-**"send test notification"** endpoint (see below) that exercises the full
-send path — validation, dispatch, retry, delivery logging — without a real
-ingested event behind it. Those test sends have no `event_id`, so the
-original `NOT NULL` constraint from V1 had to relax. Once M4 lands,
-ingestion-triggered deliveries will still always set `event_id`; this only
-opened the door for the manual-test path.
+M3 shipped a manual **"send test notification"** endpoint before real
+ingestion existed, so it could be tested end to end. Those manual sends have
+no `event_id`. Real ingestion (M4) always sets `event_id` — this migration
+only opened the door for the manual-test path to coexist with it.
 
 ## Run everything with Docker
 ```bash
@@ -97,7 +97,7 @@ docker compose up --build
 - App: http://localhost:8080
 - Health check: http://localhost:8080/actuator/health
 - Postgres: localhost:5432 (db/user/pass default to `eventalert` — see `.env.example`)
-- MailHog web UI: http://localhost:8025 — every email the app sends shows up here instead of a real inbox
+- MailHog web UI: http://localhost:8025 — every email the app sends shows up here
 
 ## Run from IntelliJ (recommended while developing)
 1. Open this folder in IntelliJ as a Maven project (it'll auto-import).
@@ -107,9 +107,53 @@ docker compose up --build
 4. Flyway applies both migrations automatically on startup; check the
    console log for confirmation.
 
-To use custom DB/mail settings, copy `.env.example` to `.env` and adjust —
-`docker compose` picks it up automatically, and you can export the same
-variables in your IntelliJ run configuration for local runs.
+To use custom DB/mail/ingestion settings, copy `.env.example` to `.env` and
+adjust — `docker compose` picks it up automatically, and you can export the
+same variables in your IntelliJ run configuration for local runs.
+
+## Event ingestion (M4)
+
+Three `EventSource` implementations, one per category, polled on a schedule
+(`INGESTION_POLL_INTERVAL_MS`, default 2 minutes) and deduped on
+`(source, external_id)` before the matching engine ever sees them:
+
+| Category | Source | API key needed? |
+|---|---|---|
+| DISASTER | USGS real-time earthquake feed | **No** — works out of the box |
+| NEWS | NewsAPI.org `/v2/top-headlines` | `NEWSAPI_KEY` |
+| MARKET | Finnhub `/quote` (polls a symbol watchlist — `FINNHUB_SYMBOLS`) | `FINNHUB_KEY` |
+
+NEWS and MARKET simply stay idle (return no events, log nothing alarming) if
+their key isn't set — the app runs fine without them. DISASTER needs
+nothing and is the easiest one to see work end to end.
+
+**How a match actually happens:** each poll cycle, every newly-inserted
+event is handed to `MatchingService`, which pulls every *active* alert rule
+in that event's category and runs it through the matching category's
+`EventMatcher` (mirrors the `CriteriaValidator` used at rule-creation time,
+but checking an event instead of validating a shape). A match calls the same
+`DeliveryService` retry/logging path M3 built — so a real ingested match and
+a manual test-notification produce identical `deliveries` rows, just with
+`event_id` set on the real one.
+
+**Testing it without waiting ~2 minutes for the scheduler:**
+`POST /api/admin/ingestion/poll-now` triggers a poll immediately and returns
+how many new events each source produced. It's gated by `ROLE_ADMIN` like
+the rest of `/api/admin/**` — since there's no admin-promotion endpoint yet,
+promote your test user directly in Postgres to try it:
+```sql
+UPDATE users SET role = 'ADMIN' WHERE email = 'jane@example.com';
+```
+(`docker exec -it eventalert-postgres psql -U eventalert -d eventalert` gets
+you a `psql` shell, or use any Postgres client against `localhost:5432`.)
+You'll also need to log in again afterward — the JWT carries the role from
+whenever it was issued.
+
+**To actually see a match fire:** create a DISASTER rule with a low
+threshold — magnitude 1+ earthquakes happen constantly, so
+`{"minMagnitude": 1.0}` (no `region`) against a channel you've linked will
+very likely produce a real `SENT`/`FAILED` delivery on the next poll. Check
+`GET /api/alert-rules/{id}/deliveries` afterward.
 
 ## Testing the API with Postman
 
@@ -129,33 +173,24 @@ collection variable with a default already set.
 
 **Suggested run order** (each request has test-tab assertions that show
 pass/fail in Postman's Test Results):
-1. `Auth → Register` then `Auth → Login` — Login saves `{{token}}`, which
-   every other request already has wired up via Bearer auth, nothing to
-   copy/paste manually.
+1. `Auth → Register` then `Auth → Login`.
 2. `Channels → Create Channel - Email` and `Create Channel - Slack` — the
-   Slack request saves `{{channel_id}}`. Note: the collection ships with a
-   placeholder webhook URL, so `verified` will come back `false` unless you
-   swap in a real one from your own Slack app.
+   Slack request saves `{{channel_id}}` (verified will be `false` against
+   the placeholder URL, expected).
 3. `Alert Rules → Create Alert Rule - News / Market / Disaster` — the
-   Disaster request uses `{{channel_id}}` and saves `{{alert_rule_id}}`, then
-   `List / Get / Update / Delete` all use it.
-4. `Notifications → Send Test Notification` — sends through every channel
-   linked to `{{alert_rule_id}}` (the Disaster rule) and returns one
-   delivery-log entry per channel. With `docker compose up` running, the
-   EMAIL delivery should come back `SENT` — check
-   [http://localhost:8025](http://localhost:8025) to see it. The SLACK
-   delivery will come back `FAILED` against the placeholder webhook URL,
-   which is expected.
-5. `Validation examples (expected to fail)` — deliberately malformed
-   requests (missing keywords, out-of-range magnitude, bad webhook URL,
-   duplicate email, wrong password, no token, notifying a rule with no
-   channels linked) that should each return the 4xx status asserted in
-   their test script.
+   Disaster request uses `{{channel_id}}` and saves `{{alert_rule_id}}`.
+4. `Notifications → Send Test Notification` then `List Deliveries For Rule`.
+5. `Admin → Trigger Ingestion Now` — returns 403 unless you've promoted your
+   test user to ADMIN in Postgres first (see above); 200 with a per-source
+   count otherwise. Re-run `List Deliveries For Rule` afterward if you set
+   up a low-threshold DISASTER rule — real matches may have landed there too.
+6. `Validation examples (expected to fail)` — deliberately malformed
+   requests that should each return the 4xx status asserted in their test
+   script.
 
 Run the whole thing unattended with **Runner** (top toolbar) or
 `newman run postman/event-alerting-platform.postman_collection.json` if you
-have Newman installed — the folder order above is also the collection's
-natural top-to-bottom order.
+have Newman installed.
 
 ## Alert rule criteria shapes (hand-rolled per category)
 
@@ -164,25 +199,24 @@ natural top-to-bottom order.
 { "keywords": ["interest rate", "recession"], "match": "any" }  // match: "any" | "all", optional
 
 // MARKET
-{ "symbol": "AAPL", "changePercent": { "gte": 5 } }              // gte and/or lte, at least one required
+{ "symbol": "AAPL", "changePercent": { "gte": 5 } }              // gte and/or lte, at least one required — signed, so lte: -5 catches drops
 
 // DISASTER
 { "minMagnitude": 6.0, "region": { "lat": 37.77, "lon": -122.41, "radiusKm": 500 } }  // region optional
 ```
 Anything that doesn't match these shapes is rejected with a 400 before it
 reaches the database — see `service/NewsCriteriaValidator.java`,
-`MarketCriteriaValidator.java`, `DisasterCriteriaValidator.java`.
+`MarketCriteriaValidator.java`, `DisasterCriteriaValidator.java`. The
+matching-time counterparts (`NewsEventMatcher`, `MarketEventMatcher`,
+`DisasterEventMatcher`) apply the same shapes against a real event's payload.
 
-## Sending a notification (M3)
+## Sending a notification (M3) / triggering one for real (M4)
 
 `POST /api/alert-rules/{id}/test-notification` with `{"title": "...", "body": "..."}`
-sends that message through every channel linked to the rule and returns one
-`DeliveryView` per channel. Each send is retried up to 3 times (linear
-backoff) before being logged as `FAILED`; a `deliveries` row is written
-exactly once per channel, with the final outcome. This is a manual trigger
-standing in for M4's real event-driven dispatch — once ingestion exists, the
-matching engine calls the same `NotificationChannel` / retry / logging code
-this endpoint already exercises.
+manually sends through every channel linked to the rule. Real matches from
+ingestion go through the identical retry/logging code automatically — see
+"Event ingestion" above. Either way, `GET /api/alert-rules/{id}/deliveries`
+shows the resulting log.
 
 ## Running tests
 `EventAlertingApplicationTests` boots the full Spring context, which needs a
@@ -198,9 +232,10 @@ M7 — hardening.)
 - **M1** — Registration/login, JWT issuing + validation, `USER`/`ADMIN` roles, stateless Spring Security, layered package structure, JDBC-only data access
 - **M2** — Alert rule + channel CRUD, hand-rolled per-category criteria validation, Slack webhook verification ping on channel creation, dedicated view layer, Postman collection
 - **M3** — `NotificationChannel` abstraction (Email via MailHog, Slack via webhook), retrying delivery dispatch, delivery logging, manual test-notification endpoint
+- **M4** — `EventSource` abstraction (USGS live, NewsAPI/Finnhub key-gated), scheduled + on-demand polling, dedup on `(source, external_id)`, `EventMatcher` per category, matches wired into M3's delivery path, `deliveries` listing endpoint
 
-## Next: M4 — Event Ingestion
-`EventSource` interface + scheduler; connectors for news, market, and
-disaster data; normalization into the `events` table; the matching engine
-that turns a real ingested event into calls to the same delivery path M3
-built.
+## Next: M5 — Hardening
+Observability (Actuator/Micrometer metrics beyond health), integration tests
+with Testcontainers, rate limiting, OpenAPI docs, and a look at whether
+`DeliveryService`'s synchronous retry loop needs to move off the
+request/scheduler thread now that real ingestion can trigger it at volume.

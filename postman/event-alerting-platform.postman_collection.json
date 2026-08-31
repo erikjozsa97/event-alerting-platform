@@ -1,8 +1,8 @@
 {
   "info": {
-    "_postman_id": "7e4f8d86-546a-4f43-9ae0-5bf2f98e13fa",
+    "_postman_id": "88db11ec-eedf-4c6c-88aa-33f11d4c5da8",
     "name": "Event Alerting Platform",
-    "description": "M1 (auth) + M2 (alert rules & channels) + M3 (notifications) endpoints. Run 'Auth > Register' then 'Auth > Login' first \u2014 Login saves {{token}} automatically for every other request.",
+    "description": "M1 (auth) + M2 (alert rules & channels) + M3 (notifications) + M4 (event ingestion & matching) endpoints. Run 'Auth > Register' then 'Auth > Login' first \u2014 Login saves {{token}} automatically for every other request. See the README for how to promote a test user to ADMIN (needed for the Admin folder).",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -695,6 +695,103 @@
                   "// SLACK deliveries will be FAILED against the placeholder webhook URL from",
                   "// the Channels folder \u2014 that's expected unless you swapped in a real one.",
                   "// Check http://localhost:8025 to see any emails MailHog received."
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Deliveries For Rule",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/alert-rules/{{alert_rule_id}}/deliveries",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "alert-rules",
+                "{{alert_rule_id}}",
+                "deliveries"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Returns an array', () => pm.expect(pm.response.json()).to.be.an('array'));",
+                  "// Run this again after Admin > Trigger Ingestion Now to see real,",
+                  "// ingestion-triggered deliveries mixed in with the manual test send above",
+                  "// (event_id will be set on those, null on the manual one)."
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Admin",
+      "item": [
+        {
+          "name": "Trigger Ingestion Now",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/admin/ingestion/poll-now",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "ingestion",
+                "poll-now"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 (ADMIN role) or 403 (not promoted yet \u2014 see README)', () => {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 403]);",
+                  "});",
+                  "if (pm.response.code === 200) {",
+                  "    const data = pm.response.json();",
+                  "    pm.test('Returns a count per source', () => pm.expect(data).to.have.property('usgs'));",
+                  "}"
                 ]
               }
             }

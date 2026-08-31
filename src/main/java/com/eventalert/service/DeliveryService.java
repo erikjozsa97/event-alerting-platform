@@ -7,12 +7,14 @@ import com.eventalert.model.AlertRule;
 import com.eventalert.model.Channel;
 import com.eventalert.model.Delivery;
 import com.eventalert.model.DeliveryStatus;
+import com.eventalert.model.Event;
 import com.eventalert.model.NotificationMessage;
 import com.eventalert.model.TestNotificationRequest;
 import com.eventalert.model.User;
 import com.eventalert.repository.AlertRuleRepository;
 import com.eventalert.repository.ChannelRepository;
 import com.eventalert.repository.DeliveryRepository;
+import com.eventalert.repository.UserRepository;
 import com.eventalert.security.CurrentUserService;
 import com.eventalert.view.DeliveryView;
 import org.springframework.stereotype.Service;
@@ -21,6 +23,7 @@ import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 public class DeliveryService {
@@ -31,24 +34,26 @@ public class DeliveryService {
     private final AlertRuleRepository alertRuleRepository;
     private final ChannelRepository channelRepository;
     private final DeliveryRepository deliveryRepository;
+    private final UserRepository userRepository;
     private final NotificationChannelDispatcher notificationChannelDispatcher;
     private final CurrentUserService currentUserService;
 
     public DeliveryService(AlertRuleRepository alertRuleRepository,
                             ChannelRepository channelRepository,
                             DeliveryRepository deliveryRepository,
+                            UserRepository userRepository,
                             NotificationChannelDispatcher notificationChannelDispatcher,
                             CurrentUserService currentUserService) {
         this.alertRuleRepository = alertRuleRepository;
         this.channelRepository = channelRepository;
         this.deliveryRepository = deliveryRepository;
+        this.userRepository = userRepository;
         this.notificationChannelDispatcher = notificationChannelDispatcher;
         this.currentUserService = currentUserService;
     }
 
-    // Manual trigger, ahead of M4's real event ingestion — lets the whole send
-    // path (validation -> dispatch -> retry -> delivery log) be exercised via
-    // Postman today instead of waiting for an event pipeline to exist.
+    // HTTP-triggered path — relies on CurrentUserService, which reads the
+    // authenticated request's SecurityContext. Only safe to call from a controller.
     public List<DeliveryView> sendTestNotification(UUID alertRuleId, TestNotificationRequest request) {
         User user = currentUserService.getCurrentUser();
 
@@ -70,6 +75,48 @@ public class DeliveryService {
             results.add(DeliveryView.from(delivery));
         }
         return results;
+    }
+
+    // Background-triggered path (called by MatchingService from the ingestion
+    // scheduler) — there is no HTTP request or SecurityContext on that thread, so
+    // this resolves the owning user directly from the rule instead of via
+    // CurrentUserService. Shares the same retry/logging core as the path above.
+    public List<Delivery> deliverForEvent(AlertRule rule, Event event) {
+        List<UUID> channelIds = alertRuleRepository.findChannelIds(rule.getId());
+        if (channelIds.isEmpty()) {
+            return List.of();
+        }
+
+        User owner = userRepository.findById(rule.getUserId())
+                .orElseThrow(() -> new IllegalStateException("Alert rule " + rule.getId()
+                        + " references a missing user " + rule.getUserId()));
+
+        NotificationMessage message = buildMessage(rule, event);
+
+        List<Delivery> deliveries = new ArrayList<>();
+        for (UUID channelId : channelIds) {
+            channelRepository.findByIdAndUserId(channelId, owner.getId())
+                    .ifPresent(channel -> deliveries.add(
+                            dispatchWithRetry(rule.getId(), event.getId(), channel, owner, message)));
+        }
+        return deliveries;
+    }
+
+    public List<DeliveryView> listForRule(UUID alertRuleId) {
+        User user = currentUserService.getCurrentUser();
+        alertRuleRepository.findByIdAndUserId(alertRuleId, user.getId())
+                .orElseThrow(() -> new AlertRuleNotFoundException(alertRuleId));
+        return deliveryRepository.findByAlertRuleId(alertRuleId).stream()
+                .map(DeliveryView::from)
+                .toList();
+    }
+
+    private NotificationMessage buildMessage(AlertRule rule, Event event) {
+        String title = "[" + rule.getCategory() + "] " + rule.getName();
+        String body = event.getPayload().entrySet().stream()
+                .map(e -> e.getKey() + ": " + e.getValue())
+                .collect(Collectors.joining("\n"));
+        return new NotificationMessage(title, body.isBlank() ? "(no details)" : body);
     }
 
     private Delivery dispatchWithRetry(UUID alertRuleId, UUID eventId, Channel channel, User recipient,
