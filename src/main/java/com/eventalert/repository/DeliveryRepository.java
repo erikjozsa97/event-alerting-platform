@@ -39,6 +39,25 @@ public class DeliveryRepository {
         return jdbc.query(sql, params, rowMapper);
     }
 
+    // Admin-only listing (M6) — every delivery, across every user, optionally
+    // filtered, capped at 200 most recent to keep it bounded.
+    public List<Delivery> findAll(DeliveryStatus status, OffsetDateTime since) {
+        StringBuilder sql = new StringBuilder("SELECT * FROM deliveries WHERE 1=1");
+        MapSqlParameterSource params = new MapSqlParameterSource();
+
+        if (status != null) {
+            sql.append(" AND status = :status");
+            params.addValue("status", status.name());
+        }
+        if (since != null) {
+            sql.append(" AND attempted_at >= :since");
+            params.addValue("since", since);
+        }
+        sql.append(" ORDER BY attempted_at DESC LIMIT 200");
+
+        return jdbc.query(sql.toString(), params, rowMapper);
+    }
+
     private MapSqlParameterSource toParams(Delivery delivery) {
         return new MapSqlParameterSource()
                 .addValue("id", delivery.getId())

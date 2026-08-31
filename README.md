@@ -5,7 +5,9 @@ moves, and natural disasters, and get notified over email/Slack (more
 channels later).
 
 **Status:** M0 (foundation), M1 (auth), M2 (alert rules & channels), M3
-(notifications), M4 (event ingestion & matching) complete.
+(notifications), M4 (event ingestion & matching), M6 (admin API) complete.
+M5 (rule matching engine) was folded into M4 rather than done separately —
+see the note in that section below.
 
 ## Stack
 - Java 17
@@ -34,16 +36,17 @@ src/main/java/com/eventalert/
 
   view/         what actually leaves the API — never the model classes directly
     UserView               hides passwordHash entirely (not just @JsonIgnore)
-    AlertRuleView
-    ChannelView             masks the Slack webhook URL in config
+    AlertRuleView                                  ChannelView (masks the Slack webhook URL)
     DeliveryView
+    AdminAlertRuleView, AdminDeliveryView, EventView, SourceStatusView   admin-only —
+      include cross-user fields (owner email/id) the per-user views deliberately omit
 
   controller/   REST endpoints
     AuthController, AlertRuleController, ChannelController, AdminController
     GlobalExceptionHandler
 
   service/      business logic
-    AuthService, AlertRuleService, ChannelService, DeliveryService
+    AuthService, AlertRuleService, ChannelService, DeliveryService, AdminService
     CriteriaValidator (+ News/Market/Disaster impls) + CriteriaValidatorDispatcher
     ChannelConfigValidator (+ Email/Slack impls) + ChannelConfigValidatorDispatcher
     NotificationChannel (+ Email/Slack impls) + NotificationChannelDispatcher
@@ -155,6 +158,25 @@ threshold — magnitude 1+ earthquakes happen constantly, so
 very likely produce a real `SENT`/`FAILED` delivery on the next poll. Check
 `GET /api/alert-rules/{id}/deliveries` afterward.
 
+## Admin API (M6)
+
+Read-only, `ROLE_ADMIN`-gated visibility across every user — this is the
+actual admin view the original brief asked for; `/api/admin/ingestion/poll-now`
+(M4) was an operational trigger, not this.
+
+| Endpoint | Returns |
+|---|---|
+| `GET /api/admin/users` | Every registered user (same shape as `UserView` — no password hash) |
+| `GET /api/admin/alert-rules` | Every alert rule, across every user, with the owner's email attached |
+| `GET /api/admin/events?category=&since=` | Ingested events, both filters optional, capped at 200 most recent |
+| `GET /api/admin/deliveries?status=&since=` | Every delivery, across every user, with the owning `userId` attached, both filters optional, capped at 200 most recent |
+| `GET /api/admin/sources/status` | Per-`EventSource` health: whether it's configured (has an API key, or needs none), when it last polled, how many events it last produced, its last error if any |
+
+No promotion endpoint exists yet — see the SQL snippet above to make a test
+user an ADMIN. `category`/`status` query params match the enum names
+exactly (`NEWS`, `MARKET`, `DISASTER` / `SENT`, `FAILED`, `PENDING`); `since`
+takes an ISO-8601 timestamp, e.g. `2026-08-01T00:00:00Z`.
+
 ## Testing the API with Postman
 
 Import `postman/event-alerting-platform.postman_collection.json` into
@@ -182,8 +204,11 @@ pass/fail in Postman's Test Results):
 4. `Notifications → Send Test Notification` then `List Deliveries For Rule`.
 5. `Admin → Trigger Ingestion Now` — returns 403 unless you've promoted your
    test user to ADMIN in Postgres first (see above); 200 with a per-source
-   count otherwise. Re-run `List Deliveries For Rule` afterward if you set
-   up a low-threshold DISASTER rule — real matches may have landed there too.
+   count otherwise. The rest of the `Admin` folder (`List Users`,
+   `List All Alert Rules`, `List Events`, `List Deliveries`, `Source Status`)
+   needs the same promotion. Re-run `List Deliveries For Rule` (in
+   `Notifications`) afterward if you set up a low-threshold DISASTER rule —
+   real matches may have landed there too.
 6. `Validation examples (expected to fail)` — deliberately malformed
    requests that should each return the 4xx status asserted in their test
    script.
@@ -232,9 +257,10 @@ M7 — hardening.)
 - **M1** — Registration/login, JWT issuing + validation, `USER`/`ADMIN` roles, stateless Spring Security, layered package structure, JDBC-only data access
 - **M2** — Alert rule + channel CRUD, hand-rolled per-category criteria validation, Slack webhook verification ping on channel creation, dedicated view layer, Postman collection
 - **M3** — `NotificationChannel` abstraction (Email via MailHog, Slack via webhook), retrying delivery dispatch, delivery logging, manual test-notification endpoint
-- **M4** — `EventSource` abstraction (USGS live, NewsAPI/Finnhub key-gated), scheduled + on-demand polling, dedup on `(source, external_id)`, `EventMatcher` per category, matches wired into M3's delivery path, `deliveries` listing endpoint
+- **M4** — `EventSource` abstraction (USGS live, NewsAPI/Finnhub key-gated), scheduled + on-demand polling, dedup on `(source, external_id)`, `EventMatcher` per category, matches wired into M3's delivery path, `deliveries` listing endpoint. **Folded in what was M5** (rule matching engine) rather than doing it as a separate milestone.
+- **M6** — Read-only Admin API: users, alert rules (with owner), events, deliveries (with owner), and per-source ingestion health
 
-## Next: M5 — Hardening
+## Next: M7 — Hardening
 Observability (Actuator/Micrometer metrics beyond health), integration tests
 with Testcontainers, rate limiting, OpenAPI docs, and a look at whether
 `DeliveryService`'s synchronous retry loop needs to move off the

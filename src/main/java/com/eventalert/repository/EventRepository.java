@@ -1,13 +1,18 @@
 package com.eventalert.repository;
 
+import com.eventalert.model.Category;
 import com.eventalert.model.Event;
 import com.eventalert.model.RawEvent;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.postgresql.util.PGobject;
+import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Types;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -18,8 +23,12 @@ import java.util.UUID;
 @Repository
 public class EventRepository {
 
+    // Admin listing is unbounded by user, so cap it — see EventRepository#findAll.
+    private static final int MAX_ADMIN_RESULTS = 200;
+
     private final NamedParameterJdbcTemplate jdbc;
     private final ObjectMapper objectMapper;
+    private final RowMapper<Event> rowMapper = this::mapRow;
 
     public EventRepository(NamedParameterJdbcTemplate jdbc, ObjectMapper objectMapper) {
         this.jdbc = jdbc;
@@ -59,6 +68,25 @@ public class EventRepository {
         return insertedIds.isEmpty() ? Optional.empty() : Optional.of(event);
     }
 
+    // Admin-only listing (M6) — optionally filtered by category and/or a minimum
+    // occurred_at, capped at MAX_ADMIN_RESULTS most recent to keep it bounded.
+    public List<Event> findAll(Category category, OffsetDateTime since) {
+        StringBuilder sql = new StringBuilder("SELECT * FROM events WHERE 1=1");
+        MapSqlParameterSource params = new MapSqlParameterSource();
+
+        if (category != null) {
+            sql.append(" AND category = :category");
+            params.addValue("category", category.name());
+        }
+        if (since != null) {
+            sql.append(" AND occurred_at >= :since");
+            params.addValue("since", since);
+        }
+        sql.append(" ORDER BY occurred_at DESC LIMIT ").append(MAX_ADMIN_RESULTS);
+
+        return jdbc.query(sql.toString(), params, rowMapper);
+    }
+
     private PGobject toJsonb(Map<String, Object> map) {
         try {
             PGobject pg = new PGobject();
@@ -68,5 +96,26 @@ public class EventRepository {
         } catch (Exception e) {
             throw new IllegalStateException("Failed to serialize event payload", e);
         }
+    }
+
+    private Map<String, Object> fromJsonb(String json) {
+        try {
+            return objectMapper.readValue(json, new TypeReference<Map<String, Object>>() {
+            });
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to parse event payload", e);
+        }
+    }
+
+    private Event mapRow(ResultSet rs, int rowNum) throws SQLException {
+        Event event = new Event();
+        event.setId(UUID.fromString(rs.getString("id")));
+        event.setSource(rs.getString("source"));
+        event.setExternalId(rs.getString("external_id"));
+        event.setCategory(Category.valueOf(rs.getString("category")));
+        event.setPayload(fromJsonb(rs.getString("payload")));
+        event.setOccurredAt(rs.getObject("occurred_at", OffsetDateTime.class));
+        event.setIngestedAt(rs.getObject("ingested_at", OffsetDateTime.class));
+        return event;
     }
 }

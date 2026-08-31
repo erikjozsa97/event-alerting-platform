@@ -37,6 +37,11 @@ public class NewsEventSource implements EventSource {
     }
 
     @Override
+    public boolean isConfigured() {
+        return apiKey != null && !apiKey.isBlank();
+    }
+
+    @Override
     @SuppressWarnings("unchecked")
     public List<RawEvent> fetchLatest() {
         if (apiKey == null || apiKey.isBlank()) {

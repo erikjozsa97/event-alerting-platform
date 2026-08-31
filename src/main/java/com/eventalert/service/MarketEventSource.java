@@ -44,6 +44,11 @@ public class MarketEventSource implements EventSource {
     }
 
     @Override
+    public boolean isConfigured() {
+        return apiKey != null && !apiKey.isBlank();
+    }
+
+    @Override
     public List<RawEvent> fetchLatest() {
         if (apiKey == null || apiKey.isBlank()) {
             // No FINNHUB_KEY configured — this source stays idle rather than failing

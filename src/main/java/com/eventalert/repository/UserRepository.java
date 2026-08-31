@@ -10,6 +10,7 @@ import org.springframework.stereotype.Repository;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -43,6 +44,12 @@ public class UserRepository {
         String sql = "SELECT * FROM users WHERE id = :id";
         var params = new MapSqlParameterSource("id", id);
         return jdbc.query(sql, params, USER_ROW_MAPPER).stream().findFirst();
+    }
+
+    // Admin-only listing (M6) — capped, this isn't meant for a huge user base yet.
+    public List<User> findAll() {
+        String sql = "SELECT * FROM users ORDER BY created_at DESC LIMIT 500";
+        return jdbc.query(sql, USER_ROW_MAPPER);
     }
 
     public boolean existsByEmail(String email) {

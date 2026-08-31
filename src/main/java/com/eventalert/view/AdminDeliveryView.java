@@ -6,19 +6,21 @@ import com.eventalert.model.DeliveryStatus;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
-public record DeliveryView(
+public record AdminDeliveryView(
         UUID id,
         UUID alertRuleId,
+        UUID userId,
         UUID eventId,
         UUID channelId,
         DeliveryStatus status,
         OffsetDateTime attemptedAt,
         String errorMessage
 ) {
-    public static DeliveryView from(Delivery delivery) {
-        return new DeliveryView(
+    public static AdminDeliveryView from(Delivery delivery, UUID userId) {
+        return new AdminDeliveryView(
                 delivery.getId(),
                 delivery.getAlertRuleId(),
+                userId,
                 delivery.getEventId(),
                 delivery.getChannelId(),
                 delivery.getStatus(),

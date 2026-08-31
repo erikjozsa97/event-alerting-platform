@@ -68,6 +68,12 @@ public class AlertRuleRepository {
         return jdbc.query(sql, params, rowMapper);
     }
 
+    // Admin-only listing (M6) — every rule, across every user.
+    public List<AlertRule> findAll() {
+        String sql = "SELECT * FROM alert_rules ORDER BY created_at DESC LIMIT 200";
+        return jdbc.query(sql, rowMapper);
+    }
+
     public void deleteByIdAndUserId(UUID id, UUID userId) {
         String sql = "DELETE FROM alert_rules WHERE id = :id AND user_id = :userId";
         var params = new MapSqlParameterSource().addValue("id", id).addValue("userId", userId);
