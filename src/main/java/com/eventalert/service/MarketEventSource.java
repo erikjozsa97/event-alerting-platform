@@ -3,6 +3,8 @@ package com.eventalert.service;
 import com.eventalert.model.Category;
 import com.eventalert.model.RawEvent;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.lang.NonNull;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
@@ -15,6 +17,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+/**
+ * Event source implementation for polling financial stock market quote updates via the Finnhub API.
+ * <p>
+ * Iterates over a configurable symbol watchlist, fetching quote data for each ticker and mapping
+ * price movements and percentage changes into standardized {@link RawEvent} instances.
+ */
 // Finnhub's /quote is per-symbol (no "everything that moved" endpoint on the free
 // tier), so this polls a configurable watchlist rather than a single feed URL.
 @Component
@@ -24,8 +32,8 @@ public class MarketEventSource implements EventSource {
     private final String apiKey;
     private final List<String> symbols;
 
-    public MarketEventSource(@Value("${app.ingestion.finnhub.key:}") String apiKey,
-                              @Value("${app.ingestion.finnhub.symbols:AAPL,MSFT,GOOGL,AMZN,TSLA}") String symbolsCsv) {
+    public MarketEventSource(@Value("${app.ingestion.finnhub.key:}") @Nullable String apiKey,
+                              @Value("${app.ingestion.finnhub.symbols:AAPL,MSFT,GOOGL,AMZN,TSLA}") @NonNull String symbolsCsv) {
         this.apiKey = apiKey;
         this.symbols = Arrays.stream(symbolsCsv.split(","))
                 .map(String::trim)
@@ -34,11 +42,13 @@ public class MarketEventSource implements EventSource {
     }
 
     @Override
+    @NonNull
     public Category getCategory() {
         return Category.MARKET;
     }
 
     @Override
+    @NonNull
     public String getSourceName() {
         return "finnhub";
     }
@@ -49,6 +59,7 @@ public class MarketEventSource implements EventSource {
     }
 
     @Override
+    @NonNull
     public List<RawEvent> fetchLatest() {
         if (apiKey == null || apiKey.isBlank()) {
             // No FINNHUB_KEY configured — this source stays idle rather than failing

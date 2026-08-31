@@ -2,6 +2,8 @@ package com.eventalert.service;
 
 import com.eventalert.model.Category;
 import com.eventalert.model.RawEvent;
+import org.springframework.lang.NonNull;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
@@ -12,6 +14,12 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * Event source implementation for fetching real-time seismic disaster data from the USGS GeoJSON feed.
+ * <p>
+ * Polling client that retrieves recent earthquake events, parses GeoJSON features, and maps them
+ * into standardized {@link RawEvent} instances for upstream processing.
+ */
 // USGS's real-time earthquake feed: free, no API key, stable GeoJSON schema.
 // https://earthquake.usgs.gov/earthquakes/feed/v1.0/geojson.php
 @Component
@@ -23,16 +31,19 @@ public class DisasterEventSource implements EventSource {
     private final RestClient restClient = RestClient.create();
 
     @Override
+    @NonNull
     public Category getCategory() {
         return Category.DISASTER;
     }
 
     @Override
+    @NonNull
     public String getSourceName() {
         return "usgs";
     }
 
     @Override
+    @NonNull
     @SuppressWarnings("unchecked")
     public List<RawEvent> fetchLatest() {
         Map<String, Object> response;
@@ -64,7 +75,8 @@ public class DisasterEventSource implements EventSource {
     }
 
     @SuppressWarnings("unchecked")
-    private RawEvent toRawEvent(Map<String, Object> feature) {
+    @Nullable
+    private RawEvent toRawEvent(@NonNull  Map<String, Object> feature) {
         Object propertiesRaw = feature.get("properties");
         Object geometryRaw = feature.get("geometry");
         Object idRaw = feature.get("id");

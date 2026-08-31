@@ -6,6 +6,7 @@ import com.eventalert.view.SourceStatusView;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.lang.NonNull;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -15,6 +16,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * Scheduled component responsible for orchestrating recurring and on-demand event ingestion across event sources.
+ * <p>
+ * Periodically polls all registered {@link EventSource} instances, deduplicates incoming events,
+ * routes new events to the {@link MatchingService}, tracks operational health status, and updates metrics.
+ */
 @Component
 public class IngestionScheduler {
 
@@ -30,10 +37,10 @@ public class IngestionScheduler {
     // (a web thread) while written by the scheduler thread, hence ConcurrentHashMap.
     private final Map<String, SourceStatusView> statusBySource = new ConcurrentHashMap<>();
 
-    public IngestionScheduler(List<EventSource> eventSources,
-                               EventRepository eventRepository,
-                               MatchingService matchingService,
-                               MeterRegistry meterRegistry) {
+    public IngestionScheduler(@NonNull List<EventSource> eventSources,
+                              @NonNull EventRepository eventRepository,
+                              @NonNull MatchingService matchingService,
+                              @NonNull MeterRegistry meterRegistry) {
         this.eventSources = eventSources;
         this.eventRepository = eventRepository;
         this.matchingService = matchingService;

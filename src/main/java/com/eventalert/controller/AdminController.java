@@ -19,6 +19,12 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * REST controller providing administrative endpoints for system management, monitoring, and debugging.
+ * <p>
+ * Offers capabilities to manually trigger ingestion polling, inspect global user accounts and alert rules,
+ * query historical ingestion events, view dispatch delivery logs, and monitor event source operational health.
+ */
 @RestController
 @RequestMapping("/api/admin")
 public class AdminController {

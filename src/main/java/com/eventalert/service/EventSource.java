@@ -2,19 +2,27 @@ package com.eventalert.service;
 
 import com.eventalert.model.Category;
 import com.eventalert.model.RawEvent;
+import org.springframework.lang.NonNull;
 
 import java.util.List;
 
+/**
+ * The ingestion-side extensibility abstraction — one implementation per data
+ * source, polled by {@code IngestionScheduler}.
+ */
 public interface EventSource {
 
+    @NonNull
     Category getCategory();
 
+    @NonNull
     String getSourceName();
 
     /**
      * Should never throw for "no new data" or "provider unavailable" — return an
      * empty list instead so one flaky source doesn't stop the others from polling.
      */
+    @NonNull
     List<RawEvent> fetchLatest();
 
     /**

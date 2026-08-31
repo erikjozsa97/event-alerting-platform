@@ -17,6 +17,11 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 import java.util.UUID;
 
+/**
+ * REST controller for managing notification channels.
+ * <p>
+ * Provides HTTP endpoints to list, create, and delete notification channels for the authenticated user.
+ */
 @RestController
 @RequestMapping("/api/channels")
 public class ChannelController {

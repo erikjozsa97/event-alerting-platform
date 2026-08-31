@@ -9,12 +9,19 @@ import com.eventalert.model.Role;
 import com.eventalert.model.User;
 import com.eventalert.repository.UserRepository;
 import com.eventalert.security.JwtService;
+import org.springframework.lang.NonNull;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
+/**
+ * Service managing user authentication, registration, and credential verification.
+ * <p>
+ * Handles account creation with password encoding, role assignment, and issuance of
+ * JWT access tokens upon valid authentication attempts.
+ */
 @Service
 public class AuthService {
 
@@ -28,7 +35,8 @@ public class AuthService {
         this.jwtService = jwtService;
     }
 
-    public User register(RegisterRequest request) {
+    @NonNull
+    public User register(@NonNull RegisterRequest request) {
         if (userRepository.existsByEmail(request.email())) {
             throw new EmailAlreadyExistsException(request.email());
         }
@@ -46,7 +54,8 @@ public class AuthService {
         return userRepository.save(user);
     }
 
-    public AuthResponse login(LoginRequest request) {
+    @NonNull
+    public AuthResponse login(@NonNull LoginRequest request) {
         User user = userRepository.findByEmail(request.email())
                 .orElseThrow(InvalidCredentialsException::new);
 

@@ -9,6 +9,7 @@ import com.eventalert.model.User;
 import com.eventalert.repository.ChannelRepository;
 import com.eventalert.security.CurrentUserService;
 import com.eventalert.view.ChannelView;
+import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Service;
 
 import java.time.OffsetDateTime;
@@ -16,6 +17,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+/**
+ * Service managing user notification channels.
+ * <p>
+ * Handles channel creation, configuration validation, automated connectivity verification,
+ * listing, and deletion for the currently authenticated user.
+ */
 @Service
 public class ChannelService {
 
@@ -34,7 +41,8 @@ public class ChannelService {
         this.notificationChannelDispatcher = notificationChannelDispatcher;
     }
 
-    public ChannelView create(ChannelRequest request) {
+    @NonNull
+    public ChannelView create(@NonNull ChannelRequest request) {
         Map<String, Object> config = request.config() == null ? Map.of() : request.config();
         configValidatorDispatcher.validate(request.type(), config);
 
@@ -59,7 +67,7 @@ public class ChannelService {
                 .toList();
     }
 
-    public void delete(UUID id) {
+    public void delete(@NonNull UUID id) {
         UUID userId = currentUserService.getCurrentUserId();
         channelRepository.findByIdAndUserId(id, userId)
                 .orElseThrow(() -> new ChannelNotFoundException(id));
@@ -69,7 +77,7 @@ public class ChannelService {
     // Reuses the same NotificationChannel that real deliveries go through (M3),
     // instead of a separate one-off HTTP call, so "verified" actually means
     // "the exact send path this channel will be used for works."
-    private boolean verify(ChannelType type, Map<String, Object> config, User owner) {
+    private boolean verify(@NonNull ChannelType type, @NonNull Map<String, Object> config, @NonNull User owner) {
         if (type == ChannelType.EMAIL) {
             // Uses the account's own, already-registered address — nothing to verify yet.
             return true;

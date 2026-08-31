@@ -21,6 +21,8 @@ import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.lang.NonNull;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 
 import java.time.OffsetDateTime;
@@ -30,6 +32,12 @@ import java.util.UUID;
 import java.util.concurrent.Executor;
 import java.util.stream.Collectors;
 
+/**
+ * Service managing notification dispatch and delivery execution for alert rules.
+ * <p>
+ * Supports both synchronous HTTP-triggered test dispatches and asynchronous background
+ * event dispatches with retry capabilities, delivery logging, and metrics recording.
+ */
 @Service
 public class DeliveryService {
 
@@ -99,7 +107,7 @@ public class DeliveryService {
     // source rather than stall behind a slow or failing channel. Callers were already
     // ignoring the return value before this change, so making it void is not a
     // behavior change for MatchingService.
-    public void deliverForEvent(AlertRule rule, Event event) {
+    public void deliverForEvent(@NonNull AlertRule rule, Event event) {
         List<UUID> channelIds = alertRuleRepository.findChannelIds(rule.getId());
         if (channelIds.isEmpty()) {
             return;
@@ -133,7 +141,8 @@ public class DeliveryService {
                 .toList();
     }
 
-    private NotificationMessage buildMessage(AlertRule rule, Event event) {
+    @NonNull
+    private NotificationMessage buildMessage(@NonNull AlertRule rule, @NonNull Event event) {
         String title = "[" + rule.getCategory() + "] " + rule.getName();
         String body = event.getPayload().entrySet().stream()
                 .map(e -> e.getKey() + ": " + e.getValue())
@@ -141,8 +150,9 @@ public class DeliveryService {
         return new NotificationMessage(title, body.isBlank() ? "(no details)" : body);
     }
 
-    private Delivery dispatchWithRetry(UUID alertRuleId, UUID eventId, Channel channel, User recipient,
-                                        NotificationMessage message) {
+    @NonNull
+    private Delivery dispatchWithRetry(@NonNull UUID alertRuleId, @Nullable UUID eventId, @NonNull Channel channel, @NonNull User recipient,
+                                       @NonNull NotificationMessage message) {
         NotificationChannel sender = notificationChannelDispatcher.get(channel.getType());
 
         String lastError = null;

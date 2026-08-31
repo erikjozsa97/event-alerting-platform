@@ -16,9 +16,11 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
-// In-memory, fixed-window counter per client key. Resets on restart and isn't shared
-// across instances — fine for one instance at the current scale, not for a fleet.
-// A distributed store (e.g. Redis) would be the fix if this ever needs to scale out.
+/**
+ * In-memory, fixed-window rate limiter, keyed by authenticated user or IP.
+ * Single-instance only — resets on restart, not shared across instances.
+ * A distributed store (e.g. Redis) would be the fix if this ever needs to scale out.
+ */
 @Component
 public class RateLimitingFilter extends OncePerRequestFilter {
 
@@ -58,7 +60,8 @@ public class RateLimitingFilter extends OncePerRequestFilter {
     // runs before this one) so one user's traffic doesn't get lumped in with others
     // behind the same IP/NAT; falls back to remote address for anonymous requests
     // (registration, login) where there's no principal yet.
-    private String resolveKey(HttpServletRequest request) {
+    @NonNull
+    private String resolveKey(@NonNull HttpServletRequest request) {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth != null && auth.isAuthenticated() && auth.getName() != null) {
             return "user:" + auth.getName();
@@ -66,7 +69,7 @@ public class RateLimitingFilter extends OncePerRequestFilter {
         return "ip:" + request.getRemoteAddr();
     }
 
-    private boolean isOverLimit(String key, int limit) {
+    private boolean isOverLimit(@NonNull String key, int limit) {
         long now = System.currentTimeMillis();
         Window window = windows.compute(key, (k, existing) -> {
             if (existing == null || now - existing.windowStart >= windowMillis) {
@@ -78,6 +81,7 @@ public class RateLimitingFilter extends OncePerRequestFilter {
         return window.count().get() > limit;
     }
 
+    /** One rate-limit window's start time and request count for a single client key. */
     private record Window(long windowStart, AtomicInteger count) {
     }
 }

@@ -7,8 +7,10 @@ import com.eventalert.exception.InvalidChannelConfigException;
 import com.eventalert.exception.InvalidCredentialsException;
 import com.eventalert.exception.InvalidCriteriaException;
 import com.eventalert.exception.NoChannelsLinkedException;
+import org.jetbrains.annotations.NotNull;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.lang.NonNull;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -18,39 +20,52 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+/**
+ * Centralized exception handler for REST controllers.
+ * <p>
+ * Intercepts domain-specific and framework exceptions across the application
+ * and formats them into a standardized JSON response body containing metadata
+ * such as timestamp, HTTP status code, reason phrase, and message.
+ */
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
     @ExceptionHandler(EmailAlreadyExistsException.class)
-    public ResponseEntity<Map<String, Object>> handleEmailExists(EmailAlreadyExistsException ex) {
+    @NotNull
+    public ResponseEntity<Map<String, Object>> handleEmailExists(@NotNull EmailAlreadyExistsException ex) {
         return error(HttpStatus.CONFLICT, ex.getMessage());
     }
 
     @ExceptionHandler(InvalidCredentialsException.class)
-    public ResponseEntity<Map<String, Object>> handleInvalidCredentials(InvalidCredentialsException ex) {
+    @NotNull
+    public ResponseEntity<Map<String, Object>> handleInvalidCredentials(@NotNull InvalidCredentialsException ex) {
         return error(HttpStatus.UNAUTHORIZED, ex.getMessage());
     }
 
     @ExceptionHandler({InvalidCriteriaException.class, InvalidChannelConfigException.class,
             NoChannelsLinkedException.class})
-    public ResponseEntity<Map<String, Object>> handleInvalidPayload(RuntimeException ex) {
+    @NotNull
+    public ResponseEntity<Map<String, Object>> handleInvalidPayload(@NotNull RuntimeException ex) {
         return error(HttpStatus.BAD_REQUEST, ex.getMessage());
     }
 
     @ExceptionHandler({AlertRuleNotFoundException.class, ChannelNotFoundException.class})
-    public ResponseEntity<Map<String, Object>> handleNotFound(RuntimeException ex) {
+    @NotNull
+    public ResponseEntity<Map<String, Object>> handleNotFound(@NotNull RuntimeException ex) {
         return error(HttpStatus.NOT_FOUND, ex.getMessage());
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<Map<String, Object>> handleValidation(MethodArgumentNotValidException ex) {
+    @NotNull
+    public ResponseEntity<Map<String, Object>> handleValidation(@NotNull MethodArgumentNotValidException ex) {
         String message = ex.getBindingResult().getFieldErrors().stream()
                 .map(f -> f.getField() + ": " + f.getDefaultMessage())
                 .collect(Collectors.joining(", "));
         return error(HttpStatus.BAD_REQUEST, message);
     }
 
-    private ResponseEntity<Map<String, Object>> error(HttpStatus status, String message) {
+    @NotNull
+    private ResponseEntity<Map<String, Object>> error(@NonNull HttpStatus status, @NonNull String message) {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("timestamp", Instant.now().toString());
         body.put("status", status.value());

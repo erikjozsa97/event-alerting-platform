@@ -21,6 +21,12 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 import java.util.UUID;
 
+/**
+ * REST controller for managing alert rules and testing their notifications.
+ * <p>
+ * Provides endpoints for performing CRUD operations on alert rules owned by the authenticated user,
+ * triggering test notifications across linked channels, and retrieving delivery logs.
+ */
 @RestController
 @RequestMapping("/api/alert-rules")
 public class AlertRuleController {

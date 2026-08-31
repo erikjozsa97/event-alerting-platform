@@ -1,22 +1,32 @@
 package com.eventalert.service;
 
 import com.eventalert.model.Category;
+import org.jetbrains.annotations.NotNull;
+import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.Map;
 
+/**
+ * Event matcher implementation for evaluating news event payloads against alert rule criteria.
+ * <p>
+ * Matches incoming news articles by scanning combined title, description, and content text
+ * against a list of target keywords using case-insensitive search logic for either all-match
+ * or any-match modes.
+ */
 @Component
 public class NewsEventMatcher implements EventMatcher {
 
     @Override
+    @NonNull
     public Category supports() {
         return Category.NEWS;
     }
 
     @Override
     @SuppressWarnings("unchecked")
-    public boolean matches(Map<String, Object> criteria, Map<String, Object> eventPayload) {
+    public boolean matches(@NotNull Map<String, Object> criteria, @NotNull Map<String, Object> eventPayload) {
         Object keywordsRaw = criteria.get("keywords");
         if (!(keywordsRaw instanceof List<?> keywords) || keywords.isEmpty()) {
             return false;

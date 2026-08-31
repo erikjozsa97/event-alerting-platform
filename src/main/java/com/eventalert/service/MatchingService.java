@@ -5,8 +5,15 @@ import com.eventalert.model.Event;
 import com.eventalert.repository.AlertRuleRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Service;
 
+/**
+ * Service responsible for matching newly ingested events against active alert rules.
+ * <p>
+ * Evaluates event payloads using category-specific {@link EventMatcher} strategies and
+ * triggers notification delivery via {@link DeliveryService} whenever rule criteria are satisfied.
+ */
 @Service
 public class MatchingService {
 
@@ -16,15 +23,15 @@ public class MatchingService {
     private final EventMatcherDispatcher matcherDispatcher;
     private final DeliveryService deliveryService;
 
-    public MatchingService(AlertRuleRepository alertRuleRepository,
-                            EventMatcherDispatcher matcherDispatcher,
-                            DeliveryService deliveryService) {
+    public MatchingService(@NonNull AlertRuleRepository alertRuleRepository,
+                           @NonNull EventMatcherDispatcher matcherDispatcher,
+                           @NonNull DeliveryService deliveryService) {
         this.alertRuleRepository = alertRuleRepository;
         this.matcherDispatcher = matcherDispatcher;
         this.deliveryService = deliveryService;
     }
 
-    public void processNewEvent(Event event) {
+    public void processNewEvent(@NonNull Event event) {
         EventMatcher matcher = matcherDispatcher.get(event.getCategory());
 
         for (AlertRule rule : alertRuleRepository.findActiveByCategory(event.getCategory())) {

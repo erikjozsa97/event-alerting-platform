@@ -1,8 +1,14 @@
 package com.eventalert.model;
 
+import org.springframework.lang.NonNull;
+
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
+/**
+ * A registered account — either a regular user or an admin, distinguished by
+ * {@link Role}.
+ */
 public class User {
 
     private UUID id;
@@ -18,38 +24,39 @@ public class User {
     private boolean enabled;
     private OffsetDateTime createdAt;
 
-    public User() {
-    }
-
+    @NonNull
     public UUID getId() {
         return id;
     }
 
-    public void setId(UUID id) {
+    public void setId(@NonNull UUID id) {
         this.id = id;
     }
 
+    @NonNull
     public String getEmail() {
         return email;
     }
 
-    public void setEmail(String email) {
+    public void setEmail(@NonNull String email) {
         this.email = email;
     }
 
+    @NonNull
     public String getPasswordHash() {
         return passwordHash;
     }
 
-    public void setPasswordHash(String passwordHash) {
+    public void setPasswordHash(@NonNull String passwordHash) {
         this.passwordHash = passwordHash;
     }
 
+    @NonNull
     public Role getRole() {
         return role;
     }
 
-    public void setRole(Role role) {
+    public void setRole(@NonNull Role role) {
         this.role = role;
     }
 
@@ -61,11 +68,12 @@ public class User {
         this.enabled = enabled;
     }
 
+    @NonNull
     public OffsetDateTime getCreatedAt() {
         return createdAt;
     }
 
-    public void setCreatedAt(OffsetDateTime createdAt) {
+    public void setCreatedAt(@NonNull OffsetDateTime createdAt) {
         this.createdAt = createdAt;
     }
 }

@@ -2,7 +2,10 @@ package com.eventalert.service;
 
 import com.eventalert.model.Category;
 import com.eventalert.model.RawEvent;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
@@ -13,6 +16,12 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * Event source implementation for fetching news headlines from the NewsAPI.org service.
+ * <p>
+ * Periodically retrieves recent top headlines and transforms article records into
+ * standardized {@link RawEvent} instances for downstream keyword matching and filtering.
+ */
 // NewsAPI.org's /v2/top-headlines: broad, no search query needed — matching against
 // user keyword criteria happens on our side (NewsCriteriaValidator / NewsEventMatcher),
 // not by asking the provider to pre-filter.
@@ -27,11 +36,13 @@ public class NewsEventSource implements EventSource {
     }
 
     @Override
+    @NotNull
     public Category getCategory() {
         return Category.NEWS;
     }
 
     @Override
+    @NotNull
     public String getSourceName() {
         return "newsapi";
     }
@@ -43,6 +54,7 @@ public class NewsEventSource implements EventSource {
 
     @Override
     @SuppressWarnings("unchecked")
+    @NotNull
     public List<RawEvent> fetchLatest() {
         if (apiKey == null || apiKey.isBlank()) {
             // No NEWSAPI_KEY configured — this source stays idle rather than failing
@@ -75,7 +87,9 @@ public class NewsEventSource implements EventSource {
         return events;
     }
 
-    private RawEvent toRawEvent(Map<String, Object> article) {
+
+    @Nullable
+    private RawEvent toRawEvent(@NonNull Map<String, Object> article) {
         Object articleUrl = article.get("url");
         if (!(articleUrl instanceof String url) || url.isBlank()) {
             return null; // url doubles as our external_id — skip anything without one

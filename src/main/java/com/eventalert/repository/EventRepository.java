@@ -9,6 +9,8 @@ import org.postgresql.util.PGobject;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
+import org.springframework.lang.NonNull;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Repository;
 
 import java.sql.ResultSet;
@@ -20,6 +22,9 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
+/**
+ * JDBC data access for the {@code events} table — no Spring Data JPA, hand-written SQL.
+ */
 @Repository
 public class EventRepository {
 
@@ -30,7 +35,7 @@ public class EventRepository {
     private final ObjectMapper objectMapper;
     private final RowMapper<Event> rowMapper = this::mapRow;
 
-    public EventRepository(NamedParameterJdbcTemplate jdbc, ObjectMapper objectMapper) {
+    public EventRepository(@NonNull NamedParameterJdbcTemplate jdbc, @NonNull ObjectMapper objectMapper) {
         this.jdbc = jdbc;
         this.objectMapper = objectMapper;
     }
@@ -38,7 +43,8 @@ public class EventRepository {
     // The (source, external_id) unique constraint from V1 is what actually dedupes —
     // this just turns "insert, but it might already exist" into a single round trip
     // instead of a check-then-insert race.
-    public Optional<Event> insertIfNew(RawEvent raw) {
+    @NonNull
+    public Optional<Event> insertIfNew(@NonNull RawEvent raw) {
         Event event = new Event();
         event.setId(UUID.randomUUID());
         event.setSource(raw.source());
@@ -70,7 +76,8 @@ public class EventRepository {
 
     // Admin-only listing (M6) — optionally filtered by category and/or a minimum
     // occurred_at, capped at MAX_ADMIN_RESULTS most recent to keep it bounded.
-    public List<Event> findAll(Category category, OffsetDateTime since) {
+    @NonNull
+    public List<Event> findAll(@Nullable Category category, @Nullable OffsetDateTime since) {
         StringBuilder sql = new StringBuilder("SELECT * FROM events WHERE 1=1");
         MapSqlParameterSource params = new MapSqlParameterSource();
 
@@ -87,7 +94,8 @@ public class EventRepository {
         return jdbc.query(sql.toString(), params, rowMapper);
     }
 
-    private PGobject toJsonb(Map<String, Object> map) {
+    @NonNull
+    private PGobject toJsonb(@Nullable Map<String, Object> map) {
         try {
             PGobject pg = new PGobject();
             pg.setType("jsonb");
@@ -98,7 +106,8 @@ public class EventRepository {
         }
     }
 
-    private Map<String, Object> fromJsonb(String json) {
+    @NonNull
+    private Map<String, Object> fromJsonb(@NonNull String json) {
         try {
             return objectMapper.readValue(json, new TypeReference<Map<String, Object>>() {
             });
@@ -107,7 +116,8 @@ public class EventRepository {
         }
     }
 
-    private Event mapRow(ResultSet rs, int rowNum) throws SQLException {
+    @NonNull
+    private Event mapRow(@NonNull ResultSet rs, int rowNum) throws SQLException {
         Event event = new Event();
         event.setId(UUID.fromString(rs.getString("id")));
         event.setSource(rs.getString("source"));

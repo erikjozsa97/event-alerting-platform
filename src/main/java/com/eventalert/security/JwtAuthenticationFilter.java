@@ -16,17 +16,29 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 
+/**
+ * Authenticates requests bearing a valid {@code Authorization: Bearer <jwt>} header.
+ */
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtService jwtService;
     private final CustomUserDetailsService userDetailsService;
 
-    public JwtAuthenticationFilter(JwtService jwtService, CustomUserDetailsService userDetailsService) {
+    public JwtAuthenticationFilter(@NonNull JwtService jwtService,
+                                    @NonNull CustomUserDetailsService userDetailsService) {
         this.jwtService = jwtService;
         this.userDetailsService = userDetailsService;
     }
 
+    /**
+     * Passes requests through untouched if there's no Bearer token. Otherwise parses
+     * and validates the token, reloads the user fresh from the database (rather than
+     * trusting the token's claims) so a disabled account or role change takes effect
+     * immediately, and populates the {@link SecurityContextHolder} on success. An
+     * invalid/expired token clears the context rather than rejecting the request here
+     * — Spring Security's access rules decide the resulting 401/403 downstream.
+     */
     @Override
     protected void doFilterInternal(@NonNull HttpServletRequest request,
                                      @NonNull HttpServletResponse response,

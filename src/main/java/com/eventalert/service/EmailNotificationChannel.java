@@ -6,10 +6,16 @@ import com.eventalert.model.ChannelType;
 import com.eventalert.model.NotificationMessage;
 import com.eventalert.model.User;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.lang.NonNull;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Component;
 
+/**
+ * Notification channel implementation for dispatching email messages via Spring's {@link JavaMailSender}.
+ * <p>
+ * Formats notification content into simple text mail messages addressed to the recipient user's registered email.
+ */
 @Component
 public class EmailNotificationChannel implements NotificationChannel {
 
@@ -23,12 +29,13 @@ public class EmailNotificationChannel implements NotificationChannel {
     }
 
     @Override
+    @NonNull
     public ChannelType getType() {
         return ChannelType.EMAIL;
     }
 
     @Override
-    public void send(Channel channel, User recipient, NotificationMessage message) {
+    public void send(@NonNull Channel channel, @NonNull  User recipient, @NonNull  NotificationMessage message) {
         SimpleMailMessage mail = new SimpleMailMessage();
         mail.setFrom(fromAddress);
         mail.setTo(recipient.getEmail());

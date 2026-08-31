@@ -8,6 +8,8 @@ import org.postgresql.util.PGobject;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
+import org.springframework.lang.NonNull;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Repository;
 
 import java.sql.ResultSet;
@@ -19,6 +21,9 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
+/**
+ * JDBC data access for the {@code channels} table — no Spring Data JPA, hand-written SQL.
+ */
 @Repository
 public class ChannelRepository {
 
@@ -26,12 +31,13 @@ public class ChannelRepository {
     private final ObjectMapper objectMapper;
     private final RowMapper<Channel> rowMapper = this::mapRow;
 
-    public ChannelRepository(NamedParameterJdbcTemplate jdbc, ObjectMapper objectMapper) {
+    public ChannelRepository(@NonNull NamedParameterJdbcTemplate jdbc, @NonNull ObjectMapper objectMapper) {
         this.jdbc = jdbc;
         this.objectMapper = objectMapper;
     }
 
-    public Channel save(Channel channel) {
+    @NonNull
+    public Channel save(@NonNull Channel channel) {
         String sql = """
                 INSERT INTO channels (id, user_id, type, config, verified, created_at)
                 VALUES (:id, :userId, :type, :config, :verified, :createdAt)
@@ -40,25 +46,28 @@ public class ChannelRepository {
         return channel;
     }
 
-    public Optional<Channel> findByIdAndUserId(UUID id, UUID userId) {
+    @NonNull
+    public Optional<Channel> findByIdAndUserId(@NonNull UUID id, @NonNull UUID userId) {
         String sql = "SELECT * FROM channels WHERE id = :id AND user_id = :userId";
         var params = new MapSqlParameterSource().addValue("id", id).addValue("userId", userId);
         return jdbc.query(sql, params, rowMapper).stream().findFirst();
     }
 
-    public List<Channel> findAllByUserId(UUID userId) {
+    @NonNull
+    public List<Channel> findAllByUserId(@NonNull UUID userId) {
         String sql = "SELECT * FROM channels WHERE user_id = :userId ORDER BY created_at DESC";
         var params = new MapSqlParameterSource("userId", userId);
         return jdbc.query(sql, params, rowMapper);
     }
 
-    public void deleteByIdAndUserId(UUID id, UUID userId) {
+    public void deleteByIdAndUserId(@NonNull UUID id, @NonNull UUID userId) {
         String sql = "DELETE FROM channels WHERE id = :id AND user_id = :userId";
         var params = new MapSqlParameterSource().addValue("id", id).addValue("userId", userId);
         jdbc.update(sql, params);
     }
 
-    private MapSqlParameterSource toParams(Channel channel) {
+    @NonNull
+    private MapSqlParameterSource toParams(@NonNull Channel channel) {
         return new MapSqlParameterSource()
                 .addValue("id", channel.getId())
                 .addValue("userId", channel.getUserId())
@@ -68,7 +77,8 @@ public class ChannelRepository {
                 .addValue("createdAt", channel.getCreatedAt());
     }
 
-    private Channel mapRow(ResultSet rs, int rowNum) throws SQLException {
+    @NonNull
+    private Channel mapRow(@NonNull ResultSet rs, int rowNum) throws SQLException {
         Channel channel = new Channel();
         channel.setId(UUID.fromString(rs.getString("id")));
         channel.setUserId(UUID.fromString(rs.getString("user_id")));
@@ -79,7 +89,8 @@ public class ChannelRepository {
         return channel;
     }
 
-    private PGobject toJsonb(Map<String, Object> map) {
+    @NonNull
+    private PGobject toJsonb(@Nullable Map<String, Object> map) {
         try {
             PGobject pg = new PGobject();
             pg.setType("jsonb");
@@ -90,7 +101,8 @@ public class ChannelRepository {
         }
     }
 
-    private Map<String, Object> fromJsonb(String json) {
+    @NonNull
+    private Map<String, Object> fromJsonb(@NonNull String json) {
         try {
             return objectMapper.readValue(json, new TypeReference<Map<String, Object>>() {
             });

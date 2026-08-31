@@ -9,12 +9,20 @@ import com.eventalert.repository.AlertRuleRepository;
 import com.eventalert.repository.ChannelRepository;
 import com.eventalert.security.CurrentUserService;
 import com.eventalert.view.AlertRuleView;
+import org.springframework.lang.NonNull;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
+/**
+ * Service managing user alert rule operations and validation.
+ * <p>
+ * Handles business logic for creating, retrieving, updating, and deleting alert rules,
+ * including validation of rule filtering criteria and verification of user ownership over linked notification channels.
+ */
 @Service
 public class AlertRuleService {
 
@@ -33,7 +41,8 @@ public class AlertRuleService {
         this.currentUserService = currentUserService;
     }
 
-    public AlertRuleView create(AlertRuleRequest request) {
+    @NonNull
+    public AlertRuleView create(@NonNull AlertRuleRequest request) {
         criteriaValidatorDispatcher.validate(request.category(), request.criteria());
         UUID userId = currentUserService.getCurrentUserId();
         List<UUID> channelIds = resolveOwnedChannelIds(userId, request.channelIds());
@@ -60,14 +69,14 @@ public class AlertRuleService {
                 .toList();
     }
 
-    public AlertRuleView getOwned(UUID id) {
+    public AlertRuleView getOwned(@NonNull UUID id) {
         UUID userId = currentUserService.getCurrentUserId();
         AlertRule rule = alertRuleRepository.findByIdAndUserId(id, userId)
                 .orElseThrow(() -> new AlertRuleNotFoundException(id));
         return AlertRuleView.from(rule, alertRuleRepository.findChannelIds(id));
     }
 
-    public AlertRuleView update(UUID id, AlertRuleRequest request) {
+    public AlertRuleView update(@NonNull UUID id, @NonNull AlertRuleRequest request) {
         criteriaValidatorDispatcher.validate(request.category(), request.criteria());
         UUID userId = currentUserService.getCurrentUserId();
         AlertRule existing = alertRuleRepository.findByIdAndUserId(id, userId)
@@ -93,7 +102,8 @@ public class AlertRuleService {
         alertRuleRepository.deleteByIdAndUserId(id, userId);
     }
 
-    private List<UUID> resolveOwnedChannelIds(UUID userId, List<UUID> requestedChannelIds) {
+    @NonNull
+    private List<UUID> resolveOwnedChannelIds(@NonNull UUID userId, @Nullable List<UUID> requestedChannelIds) {
         if (requestedChannelIds == null || requestedChannelIds.isEmpty()) {
             return List.of();
         }

@@ -12,6 +12,7 @@ import com.eventalert.view.AdminAlertRuleView;
 import com.eventalert.view.AdminDeliveryView;
 import com.eventalert.view.EventView;
 import com.eventalert.view.UserView;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 
 import java.time.OffsetDateTime;
@@ -20,6 +21,12 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+/**
+ * Service managing administrative read operations across domain entities.
+ * <p>
+ * Consolidates system-wide data querying for users, alert rules, ingested events,
+ * and delivery records, assembling cross-domain administrative projections.
+ */
 @Service
 public class AdminService {
 
@@ -54,11 +61,11 @@ public class AdminService {
                 .toList();
     }
 
-    public List<EventView> listEvents(Category category, OffsetDateTime since) {
+    public List<EventView> listEvents(@Nullable Category category, @Nullable OffsetDateTime since) {
         return eventRepository.findAll(category, since).stream().map(EventView::from).toList();
     }
 
-    public List<AdminDeliveryView> listDeliveries(DeliveryStatus status, OffsetDateTime since) {
+    public List<AdminDeliveryView> listDeliveries(@Nullable DeliveryStatus status, @Nullable OffsetDateTime since) {
         Map<UUID, UUID> userIdByRuleId = alertRuleRepository.findAll().stream()
                 .collect(Collectors.toMap(AlertRule::getId, AlertRule::getUserId));
 

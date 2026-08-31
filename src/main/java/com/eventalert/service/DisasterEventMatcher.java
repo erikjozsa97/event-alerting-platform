@@ -1,22 +1,30 @@
 package com.eventalert.service;
 
 import com.eventalert.model.Category;
+import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
 
+/**
+ * Event matcher implementation for evaluating disaster event payloads against alert rule criteria.
+ * <p>
+ * Matches incoming disaster events (e.g., earthquakes) based on minimum magnitude thresholds
+ * and optional geographic distance constraints calculated using the Haversine formula.
+ */
 @Component
 public class DisasterEventMatcher implements EventMatcher {
 
     private static final double EARTH_RADIUS_KM = 6371.0;
 
     @Override
+    @NonNull
     public Category supports() {
         return Category.DISASTER;
     }
 
     @Override
-    public boolean matches(Map<String, Object> criteria, Map<String, Object> eventPayload) {
+    public boolean matches(@NonNull Map<String, Object> criteria, @NonNull  Map<String, Object> eventPayload) {
         if (!(criteria.get("minMagnitude") instanceof Number minMagnitude)
                 || !(eventPayload.get("magnitude") instanceof Number eventMagnitude)) {
             return false;

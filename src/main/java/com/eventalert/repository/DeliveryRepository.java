@@ -5,6 +5,8 @@ import com.eventalert.model.DeliveryStatus;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
+import org.springframework.lang.NonNull;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Repository;
 
 import java.sql.ResultSet;
@@ -14,17 +16,21 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
+/**
+ * JDBC data access for the {@code deliveries} table — no Spring Data JPA, hand-written SQL.
+ */
 @Repository
 public class DeliveryRepository {
 
     private final NamedParameterJdbcTemplate jdbc;
     private final RowMapper<Delivery> rowMapper = this::mapRow;
 
-    public DeliveryRepository(NamedParameterJdbcTemplate jdbc) {
+    public DeliveryRepository(@NonNull NamedParameterJdbcTemplate jdbc) {
         this.jdbc = jdbc;
     }
 
-    public Delivery save(Delivery delivery) {
+    @NonNull
+    public Delivery save(@NonNull Delivery delivery) {
         String sql = """
                 INSERT INTO deliveries (id, alert_rule_id, event_id, channel_id, status, attempted_at, error_message)
                 VALUES (:id, :alertRuleId, :eventId, :channelId, :status, :attemptedAt, :errorMessage)
@@ -33,7 +39,8 @@ public class DeliveryRepository {
         return delivery;
     }
 
-    public List<Delivery> findByAlertRuleId(UUID alertRuleId) {
+    @NonNull
+    public List<Delivery> findByAlertRuleId(@NonNull UUID alertRuleId) {
         String sql = "SELECT * FROM deliveries WHERE alert_rule_id = :alertRuleId ORDER BY attempted_at DESC";
         var params = new MapSqlParameterSource("alertRuleId", alertRuleId);
         return jdbc.query(sql, params, rowMapper);
@@ -41,7 +48,8 @@ public class DeliveryRepository {
 
     // Admin-only listing (M6) — every delivery, across every user, optionally
     // filtered, capped at 200 most recent to keep it bounded.
-    public List<Delivery> findAll(DeliveryStatus status, OffsetDateTime since) {
+    @NonNull
+    public List<Delivery> findAll(@Nullable DeliveryStatus status, @Nullable OffsetDateTime since) {
         StringBuilder sql = new StringBuilder("SELECT * FROM deliveries WHERE 1=1");
         MapSqlParameterSource params = new MapSqlParameterSource();
 
@@ -58,7 +66,8 @@ public class DeliveryRepository {
         return jdbc.query(sql.toString(), params, rowMapper);
     }
 
-    private MapSqlParameterSource toParams(Delivery delivery) {
+    @NonNull
+    private MapSqlParameterSource toParams(@NonNull Delivery delivery) {
         return new MapSqlParameterSource()
                 .addValue("id", delivery.getId())
                 .addValue("alertRuleId", delivery.getAlertRuleId())
@@ -69,7 +78,8 @@ public class DeliveryRepository {
                 .addValue("errorMessage", delivery.getErrorMessage());
     }
 
-    private Delivery mapRow(ResultSet rs, int rowNum) throws SQLException {
+    @NonNull
+    private Delivery mapRow(@NonNull ResultSet rs, int rowNum) throws SQLException {
         Delivery delivery = new Delivery();
         delivery.setId(UUID.fromString(rs.getString("id")));
         delivery.setAlertRuleId(UUID.fromString(rs.getString("alert_rule_id")));
