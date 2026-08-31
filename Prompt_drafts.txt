@@ -1,0 +1,63 @@
+Prompt 1
+Specification: 
+-Identify the nature of the task.
+-Specify the infrastructure
+-Identfy major milestones
+
+
+Help me create a project based on the following brief:
+
+"We want users to be able to set up alerts so they get notified when something important happens in the world 
+— like breaking news, market movements, natural disasters, that kind of thing. 
+Should work for both email and Slack. 
+Make it flexible enough that we can add more channels later. We need an admin view too."
+
+There are no wireframes. No schema proposal. No agreement on what "something important" means, where the data comes from, or how events are detected.
+
+The project will be created using Java 17, IntelliJ IDEA, Spring Boot framework, PostgreSQL and will be dockerised.
+
+Ask me questions to identify the specifics of the project, the deliverables and major development milestones that can be implemented step by step.
+
+If you think I should give you more context or upload anything to help you do a better job, let me know. 
+Use any tools you have access to—like Google Drive, web search, etc.—if they’ll help.
+
+
+Prompt 2
+Specification: 
+-Specify design pattern (Model View Controller Service Repository)
+-Reaffirm the usage of spring-boot-starter-jdbc before adding the repository layer.
+
+The docker compose up --build ran without issues and http://localhost:8080/actuator/health returned {"status":"UP"}. 
+From now on follow the Model View Controller Service Repository design pattern and put each layel into its own directory with the corresponding name.
+Add spring-boot-starter-jdbc to the pom.xml and use it to communicate with the database.
+
+Ask me questions as we go if you need specifications with something or more context in general.
+
+
+
+Prompt 3
+Specification: 
+-Create a view layer instead of @JsonIgnore
+-Specify validations for the categories.
+-replace curl with postman
+
+The registartion works. Instead of relying on @JsonIgnore create a View layer to prevent sensitive data from leaking.
+The API will be accessed with postman instead of curl. Specify each example and test with this in mind.
+For the keyworks we should have hand-rolled validators per category.
+
+Ask me questions as we go if you need specifications with something or more context in general.
+
+
+Prompt 4
+Specification: Cleanup
+Collect every class, function or variable that you deem as unnecessary and flag them for removal. 
+Make sure they don't compromise the projects integrity. Ask me before removeing them. 
+The two APIs that are currently not working should be left alone. 
+If you can't find anything that can be safely removed let me know.
+
+Prompt 5
+Specification: Documentation
+Add class level javadoc for every class with a very short explanation about what the class does.
+Add a short javadoc for every function that has a cognitive complexity higher than 5.
+Add @Nullable and @NonNull for every function input varible and return value where it is applicable.
+
