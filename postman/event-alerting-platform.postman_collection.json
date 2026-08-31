@@ -1,8 +1,8 @@
 {
   "info": {
-    "_postman_id": "642884da-ea7c-4e0a-9723-9973d290fd02",
+    "_postman_id": "58f05d57-e397-4be9-baea-f852e95327bd",
     "name": "Event Alerting Platform",
-    "description": "M1 (auth) + M2 (alert rules & channels) + M3 (notifications) + M4 (event ingestion & matching) + M6 (admin API) endpoints. Run 'Auth > Register' then 'Auth > Login' first \u2014 Login saves {{token}} automatically for every other request. See the README for how to promote a test user to ADMIN (needed for the Admin folder).",
+    "description": "M1 (auth) + M2 (alert rules & channels) + M3 (notifications) + M4 (event ingestion & matching) + M6 (admin API) + M7 (hardening) endpoints. Run 'Auth > Register' then 'Auth > Login' first \u2014 Login saves {{token}} automatically for every other request. Run 'Auth > Register Admin' + 'Auth > Login as Admin' to get {{admin_token}} for the Admin folder (registration now takes an isAdmin flag \u2014 no DB workaround needed). Note: M7 added a rate limiter (~120 req/min default, ~10 req/min on /api/auth/**) \u2014 running this whole collection repeatedly in quick succession may start returning 429s.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -13,6 +13,11 @@
     },
     {
       "key": "token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "admin_token",
       "value": "",
       "type": "string"
     },
@@ -77,6 +82,7 @@
                   "    const data = pm.response.json();",
                   "    pm.expect(data.id).to.be.a('string');",
                   "    pm.expect(data.email).to.eql('jane@example.com');",
+                  "    pm.expect(data.role).to.eql('USER');",
                   "    pm.expect(data.passwordHash).to.be.undefined;",
                   "    pm.expect(data.password).to.be.undefined;",
                   "});"
@@ -125,6 +131,96 @@
                   "const data = pm.response.json();",
                   "pm.test('Token present', () => pm.expect(data.token).to.be.a('string'));",
                   "pm.collectionVariables.set('token', data.token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Register Admin",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/auth/register",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "register"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@example.com\",\n  \"password\": \"correct-horse-battery\",\n  \"isAdmin\": true\n}"
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', () => pm.response.to.have.status(201));",
+                  "pm.test('Role is ADMIN', () => pm.expect(pm.response.json().role).to.eql('ADMIN'));",
+                  "// isAdmin:true on the request is what did this \u2014 anyone who can hit this",
+                  "// endpoint can self-promote. Fine for dev; see the README for the tradeoff."
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login as Admin",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@example.com\",\n  \"password\": \"correct-horse-battery\"\n}"
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "const data = pm.response.json();",
+                  "pm.test('Token present', () => pm.expect(data.token).to.be.a('string'));",
+                  "pm.collectionVariables.set('admin_token', data.token);"
                 ]
               }
             }
@@ -772,7 +868,7 @@
               "bearer": [
                 {
                   "key": "token",
-                  "value": "{{token}}",
+                  "value": "{{admin_token}}",
                   "type": "string"
                 }
               ]
@@ -785,13 +881,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Status is 200 (ADMIN role) or 403 (not promoted yet \u2014 see README)', () => {",
-                  "    pm.expect(pm.response.code).to.be.oneOf([200, 403]);",
-                  "});",
-                  "if (pm.response.code === 200) {",
-                  "    const data = pm.response.json();",
-                  "    pm.test('Returns a count per source', () => pm.expect(data).to.have.property('usgs'));",
-                  "}"
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Returns a count per source', () => pm.expect(pm.response.json()).to.have.property('usgs'));"
                 ]
               }
             }
@@ -818,7 +909,7 @@
               "bearer": [
                 {
                   "key": "token",
-                  "value": "{{token}}",
+                  "value": "{{admin_token}}",
                   "type": "string"
                 }
               ]
@@ -831,16 +922,12 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Status is 200 or 403 (see README for ADMIN promotion)', () => {",
-                  "    pm.expect(pm.response.code).to.be.oneOf([200, 403]);",
-                  "});",
-                  "if (pm.response.code === 200) {",
-                  "    pm.test('Returns an array with no passwordHash field', () => {",
-                  "        const data = pm.response.json();",
-                  "        pm.expect(data).to.be.an('array');",
-                  "        data.forEach(u => pm.expect(u.passwordHash).to.be.undefined);",
-                  "    });",
-                  "}"
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Returns an array with no passwordHash field', () => {",
+                  "    const data = pm.response.json();",
+                  "    pm.expect(data).to.be.an('array');",
+                  "    data.forEach(u => pm.expect(u.passwordHash).to.be.undefined);",
+                  "});"
                 ]
               }
             }
@@ -867,7 +954,7 @@
               "bearer": [
                 {
                   "key": "token",
-                  "value": "{{token}}",
+                  "value": "{{admin_token}}",
                   "type": "string"
                 }
               ]
@@ -880,13 +967,11 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Status is 200 or 403', () => pm.expect(pm.response.code).to.be.oneOf([200, 403]));",
-                  "if (pm.response.code === 200) {",
-                  "    pm.test('Each rule has an owning userEmail', () => {",
-                  "        const data = pm.response.json();",
-                  "        if (data.length > 0) pm.expect(data[0]).to.have.property('userEmail');",
-                  "    });",
-                  "}"
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Each rule has an owning userEmail', () => {",
+                  "    const data = pm.response.json();",
+                  "    if (data.length > 0) pm.expect(data[0]).to.have.property('userEmail');",
+                  "});"
                 ]
               }
             }
@@ -913,7 +998,7 @@
               "bearer": [
                 {
                   "key": "token",
-                  "value": "{{token}}",
+                  "value": "{{admin_token}}",
                   "type": "string"
                 }
               ]
@@ -926,7 +1011,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Status is 200 or 403', () => pm.expect(pm.response.code).to.be.oneOf([200, 403]));",
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
                   "// Run Trigger Ingestion Now first \u2014 otherwise this may be an empty array,",
                   "// which is still a valid 200 response, just nothing ingested yet."
                 ]
@@ -955,7 +1040,7 @@
               "bearer": [
                 {
                   "key": "token",
-                  "value": "{{token}}",
+                  "value": "{{admin_token}}",
                   "type": "string"
                 }
               ]
@@ -968,13 +1053,11 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Status is 200 or 403', () => pm.expect(pm.response.code).to.be.oneOf([200, 403]));",
-                  "if (pm.response.code === 200) {",
-                  "    pm.test('Each delivery has an owning userId', () => {",
-                  "        const data = pm.response.json();",
-                  "        if (data.length > 0) pm.expect(data[0]).to.have.property('userId');",
-                  "    });",
-                  "}"
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Each delivery has an owning userId', () => {",
+                  "    const data = pm.response.json();",
+                  "    if (data.length > 0) pm.expect(data[0]).to.have.property('userId');",
+                  "});"
                 ]
               }
             }
@@ -1002,7 +1085,7 @@
               "bearer": [
                 {
                   "key": "token",
-                  "value": "{{token}}",
+                  "value": "{{admin_token}}",
                   "type": "string"
                 }
               ]
@@ -1015,15 +1098,13 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Status is 200 or 403', () => pm.expect(pm.response.code).to.be.oneOf([200, 403]));",
-                  "if (pm.response.code === 200) {",
-                  "    pm.test('Includes usgs, configured=true (no key needed)', () => {",
-                  "        const data = pm.response.json();",
-                  "        const usgs = data.find(s => s.sourceName === 'usgs');",
-                  "        pm.expect(usgs).to.not.be.undefined;",
-                  "        pm.expect(usgs.configured).to.eql(true);",
-                  "    });",
-                  "}"
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Includes usgs, configured=true (no key needed)', () => {",
+                  "    const data = pm.response.json();",
+                  "    const usgs = data.find(s => s.sourceName === 'usgs');",
+                  "    pm.expect(usgs).to.not.be.undefined;",
+                  "    pm.expect(usgs.configured).to.eql(true);",
+                  "});"
                 ]
               }
             }

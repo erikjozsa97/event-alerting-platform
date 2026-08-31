@@ -1,0 +1,23 @@
+# Activate with SPRING_PROFILES_ACTIVE=prod. Overrides the dev-friendly defaults in
+# application.yml — notably, JWT_SECRET and DB_PASSWORD have NO fallback here, so the
+# app fails fast at startup if they aren't set, instead of silently running with the
+# dev-only secret.
+spring:
+  datasource:
+    password: ${DB_PASSWORD}
+
+security:
+  jwt:
+    secret: ${JWT_SECRET}
+
+management:
+  endpoint:
+    health:
+      show-details: never
+
+server:
+  error:
+    include-message: never
+    include-binding-errors: never
+    include-stacktrace: never
+    include-exception: false

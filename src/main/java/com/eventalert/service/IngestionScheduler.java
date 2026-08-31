@@ -3,6 +3,7 @@ package com.eventalert.service;
 import com.eventalert.model.RawEvent;
 import com.eventalert.repository.EventRepository;
 import com.eventalert.view.SourceStatusView;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -22,6 +23,7 @@ public class IngestionScheduler {
     private final List<EventSource> eventSources;
     private final EventRepository eventRepository;
     private final MatchingService matchingService;
+    private final MeterRegistry meterRegistry;
 
     // In-memory only — a restart resets it, which is fine for "is this source
     // healthy right now" reporting. Read by the admin source-status endpoint
@@ -30,10 +32,12 @@ public class IngestionScheduler {
 
     public IngestionScheduler(List<EventSource> eventSources,
                                EventRepository eventRepository,
-                               MatchingService matchingService) {
+                               MatchingService matchingService,
+                               MeterRegistry meterRegistry) {
         this.eventSources = eventSources;
         this.eventRepository = eventRepository;
         this.matchingService = matchingService;
+        this.meterRegistry = meterRegistry;
 
         for (EventSource source : eventSources) {
             statusBySource.put(source.getSourceName(),
@@ -72,6 +76,9 @@ public class IngestionScheduler {
             statusBySource.put(source.getSourceName(),
                     new SourceStatusView(source.getSourceName(), source.getCategory(),
                             source.isConfigured(), OffsetDateTime.now(), insertedCount, error));
+
+            meterRegistry.counter("ingestion.events.ingested", "source", source.getSourceName())
+                    .increment(insertedCount);
         }
 
         return ingestedCountBySource;

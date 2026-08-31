@@ -1,13 +1,10 @@
 package com.eventalert;
 
 import org.junit.jupiter.api.Test;
-import org.springframework.boot.test.context.SpringBootTest;
 
-// NOTE: this loads the full context, which requires a reachable Postgres
-// (matching application.yml). Run `docker compose up -d postgres` first.
-// Testcontainers-based tests that don't need an external DB arrive in M7.
-@SpringBootTest
-class EventAlertingApplicationTests {
+// Now a Testcontainers-backed context-load smoke test — no manual
+// `docker compose up -d postgres` needed before `mvn test`.
+class EventAlertingApplicationTests extends AbstractIntegrationTest {
 
     @Test
     void contextLoads() {

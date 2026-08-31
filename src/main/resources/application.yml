@@ -44,12 +44,18 @@ app:
     finnhub:
       key: ${FINNHUB_KEY:}
       symbols: ${FINNHUB_SYMBOLS:AAPL,MSFT,GOOGL,AMZN,TSLA}
+  # In-memory, per-instance rate limiting (RateLimitingFilter) — resets on restart,
+  # not shared across instances. Fine for one instance; revisit before scaling out.
+  rate-limit:
+    window-seconds: ${RATE_LIMIT_WINDOW_SECONDS:60}
+    auth-limit: ${RATE_LIMIT_AUTH:10}
+    default-limit: ${RATE_LIMIT_DEFAULT:120}
 
 management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,metrics,prometheus
   endpoint:
     health:
       show-details: when-authorized

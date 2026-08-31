@@ -5,9 +5,9 @@ moves, and natural disasters, and get notified over email/Slack (more
 channels later).
 
 **Status:** M0 (foundation), M1 (auth), M2 (alert rules & channels), M3
-(notifications), M4 (event ingestion & matching), M6 (admin API) complete.
-M5 (rule matching engine) was folded into M4 rather than done separately —
-see the note in that section below.
+(notifications), M4 (event ingestion & matching), M6 (admin API), M7
+(hardening) complete. M5 (rule matching engine) was folded into M4 rather
+than done separately — see the note in that section below.
 
 ## Stack
 - Java 17
@@ -59,7 +59,10 @@ src/main/java/com/eventalert/
 
   security/     JWT + Spring Security wiring
     JwtService, JwtAuthenticationFilter, SecurityConfig,
-    CustomUserDetailsService, CurrentUserService
+    CustomUserDetailsService, CurrentUserService, RateLimitingFilter
+
+  config/       cross-cutting Spring config outside the five named layers
+    AsyncConfig   dedicated thread pool for background delivery dispatch
 
   exception/    domain exceptions, mapped to HTTP responses by GlobalExceptionHandler
     EmailAlreadyExistsException, InvalidCredentialsException,
@@ -68,9 +71,15 @@ src/main/java/com/eventalert/
     NotificationDeliveryException, NoChannelsLinkedException
 
 src/main/resources/
-  application.yml                            config (datasource, JWT secret, mail, ingestion)
+  application.yml                            config (datasource, JWT secret, mail, ingestion, rate limits)
+  application-prod.yml                       prod profile — no default secrets, fails fast if unset
   db/migration/V1__init_schema.sql            full v1 schema
   db/migration/V2__deliveries_event_id_nullable.sql
+
+src/test/java/com/eventalert/
+  AbstractIntegrationTest.java   Testcontainers Postgres base class — no manual DB setup for `mvn test`
+  EventAlertingApplicationTests.java
+  controller/AuthIntegrationTest.java, AlertRuleIntegrationTest.java
 
 postman/
   event-alerting-platform.postman_collection.json   importable collection, see below
@@ -142,15 +151,18 @@ a manual test-notification produce identical `deliveries` rows, just with
 **Testing it without waiting ~2 minutes for the scheduler:**
 `POST /api/admin/ingestion/poll-now` triggers a poll immediately and returns
 how many new events each source produced. It's gated by `ROLE_ADMIN` like
-the rest of `/api/admin/**` — since there's no admin-promotion endpoint yet,
-promote your test user directly in Postgres to try it:
-```sql
-UPDATE users SET role = 'ADMIN' WHERE email = 'jane@example.com';
+the rest of `/api/admin/**` — register with `"isAdmin": true` to get one:
+```json
+{"email": "admin@example.com", "password": "correct-horse-battery", "isAdmin": true}
 ```
-(`docker exec -it eventalert-postgres psql -U eventalert -d eventalert` gets
-you a `psql` shell, or use any Postgres client against `localhost:5432`.)
-You'll also need to log in again afterward — the JWT carries the role from
-whenever it was issued.
+**Self-service admin promotion at registration — anyone who can call
+`/api/auth/register` can set `isAdmin: true` and get `ROLE_ADMIN`
+immediately.** That's a deliberate simplification for this stage of the
+project, not an oversight: fine while only trusted people can reach
+registration, not fine the moment this is public-facing. If that changes,
+this needs to go behind an invite/allowlist, an approval step, or be
+removed from self-registration entirely in favor of an admin-only
+user-management endpoint.
 
 **To actually see a match fire:** create a DISASTER rule with a low
 threshold — magnitude 1+ earthquakes happen constantly, so
@@ -172,10 +184,57 @@ actual admin view the original brief asked for; `/api/admin/ingestion/poll-now`
 | `GET /api/admin/deliveries?status=&since=` | Every delivery, across every user, with the owning `userId` attached, both filters optional, capped at 200 most recent |
 | `GET /api/admin/sources/status` | Per-`EventSource` health: whether it's configured (has an API key, or needs none), when it last polled, how many events it last produced, its last error if any |
 
-No promotion endpoint exists yet — see the SQL snippet above to make a test
-user an ADMIN. `category`/`status` query params match the enum names
-exactly (`NEWS`, `MARKET`, `DISASTER` / `SENT`, `FAILED`, `PENDING`); `since`
-takes an ISO-8601 timestamp, e.g. `2026-08-01T00:00:00Z`.
+No promotion endpoint exists — register with `"isAdmin": true` (see
+"Event ingestion" above for the tradeoff that implies). `category`/`status`
+query params match the enum names exactly (`NEWS`, `MARKET`, `DISASTER` /
+`SENT`, `FAILED`, `PENDING`); `since` takes an ISO-8601 timestamp, e.g.
+`2026-08-01T00:00:00Z`.
+
+## Hardening (M7)
+
+**Observability.** `/actuator/metrics` and `/actuator/prometheus` are now
+exposed (in addition to `health`/`info`), gated by `ROLE_ADMIN` — health and
+info stay public for things like Docker healthchecks and uptime monitors
+that shouldn't need a token. Two custom counters were added on top of the
+usual JVM/HTTP metrics Actuator gives you for free:
+- `ingestion.events.ingested{source=...}` — incremented per source, per poll
+- `deliveries.total{channel=...,status=...}` — incremented per delivery attempt
+
+**API docs.** Swagger UI at `/swagger-ui.html`, raw OpenAPI JSON at
+`/v3/api-docs` — both public, generated automatically from the existing
+controllers with no extra annotations needed.
+
+**Rate limiting.** `RateLimitingFilter` — a simple in-memory, fixed-window
+limiter (~10 req/min on `/api/auth/**`, ~120 req/min elsewhere by default,
+both configurable). It keys by authenticated user where possible, falling
+back to IP for anonymous requests like login/register. **This is
+single-instance only** — the counters live in memory and reset on restart,
+so it stops being sufficient the moment this runs as more than one
+instance; a shared store (Redis, etc.) would be the fix then, not now.
+
+**Integration tests.** `mvn test` now spins up a real, ephemeral Postgres
+via Testcontainers automatically — no more `docker compose up -d postgres`
+before running tests. `AuthIntegrationTest` and `AlertRuleIntegrationTest`
+exercise the full stack (real HTTP-shaped requests through MockMvc, real
+Spring Security filter chain including the new rate limiter, real
+hand-rolled validators) rather than mocking layers out. **I could not run
+these myself** — this sandbox has no Docker/network access, so `mvn test`
+please, before relying on them.
+
+**Async delivery dispatch.** `DeliveryService#deliverForEvent` (the path
+`MatchingService` calls on every real match) now submits each channel's
+send to a dedicated thread pool (`AsyncConfig`) instead of blocking the
+ingestion scheduler thread through up to 3 retries with backoff. The manual
+`test-notification` endpoint stays synchronous on purpose — it returns
+delivery results in the response body, so a caller waiting on that still
+needs to actually wait.
+
+**Prod profile.** `application-prod.yml` (activate with
+`SPRING_PROFILES_ACTIVE=prod`) removes the dev-only fallback values for
+`JWT_SECRET` and `DB_PASSWORD` — the app now fails fast at startup in that
+profile if they're not set, rather than silently running with defaults
+meant for local dev. It also turns off detailed error bodies and health
+details.
 
 ## Testing the API with Postman
 
@@ -189,26 +248,27 @@ collection variable with a default already set.
 |---|---|
 | `base_url` | Defaults to `http://localhost:8080` |
 | `token` | Set automatically by **Auth → Login**'s test script |
+| `admin_token` | Set automatically by **Auth → Login as Admin**'s test script |
 | `channel_id` | Set automatically by **Channels → Create Channel - Slack** |
 | `alert_rule_id` | Set automatically by **Alert Rules → Create Alert Rule - Disaster** |
 | `news_rule_id` | Set automatically by **Alert Rules → Create Alert Rule - News** (has no channels linked — used to test the "no channels" error) |
 
 **Suggested run order** (each request has test-tab assertions that show
 pass/fail in Postman's Test Results):
-1. `Auth → Register` then `Auth → Login`.
+1. `Auth → Register` then `Auth → Login`. Also run `Auth → Register Admin`
+   then `Auth → Login as Admin` — the former sends `"isAdmin": true`, the
+   latter saves `{{admin_token}}` for the `Admin` folder below.
 2. `Channels → Create Channel - Email` and `Create Channel - Slack` — the
    Slack request saves `{{channel_id}}` (verified will be `false` against
    the placeholder URL, expected).
 3. `Alert Rules → Create Alert Rule - News / Market / Disaster` — the
    Disaster request uses `{{channel_id}}` and saves `{{alert_rule_id}}`.
 4. `Notifications → Send Test Notification` then `List Deliveries For Rule`.
-5. `Admin → Trigger Ingestion Now` — returns 403 unless you've promoted your
-   test user to ADMIN in Postgres first (see above); 200 with a per-source
-   count otherwise. The rest of the `Admin` folder (`List Users`,
-   `List All Alert Rules`, `List Events`, `List Deliveries`, `Source Status`)
-   needs the same promotion. Re-run `List Deliveries For Rule` (in
-   `Notifications`) afterward if you set up a low-threshold DISASTER rule —
-   real matches may have landed there too.
+5. `Admin → Trigger Ingestion Now` and the rest of the `Admin` folder
+   (`List Users`, `List All Alert Rules`, `List Events`, `List Deliveries`,
+   `Source Status`) — all use `{{admin_token}}` from step 1. Re-run
+   `List Deliveries For Rule` (in `Notifications`) afterward if you set up a
+   low-threshold DISASTER rule — real matches may have landed there too.
 6. `Validation examples (expected to fail)` — deliberately malformed
    requests that should each return the 4xx status asserted in their test
    script.
@@ -244,13 +304,12 @@ ingestion go through the identical retry/logging code automatically — see
 shows the resulting log.
 
 ## Running tests
-`EventAlertingApplicationTests` boots the full Spring context, which needs a
-reachable Postgres — run `docker compose up -d postgres` first, then:
+No manual setup needed anymore — Testcontainers spins up Postgres automatically:
 ```bash
 mvn test
 ```
-(Testcontainers-based tests that don't need an external DB running arrive in
-M7 — hardening.)
+Requires Docker to be running on whatever machine runs the tests (same as
+Testcontainers always does). If Docker isn't available, these tests can't run.
 
 ## What's in place so far
 - **M0** — Runnable Spring Boot skeleton, Docker Compose, full v1 schema via Flyway, Actuator health endpoint
@@ -259,9 +318,13 @@ M7 — hardening.)
 - **M3** — `NotificationChannel` abstraction (Email via MailHog, Slack via webhook), retrying delivery dispatch, delivery logging, manual test-notification endpoint
 - **M4** — `EventSource` abstraction (USGS live, NewsAPI/Finnhub key-gated), scheduled + on-demand polling, dedup on `(source, external_id)`, `EventMatcher` per category, matches wired into M3's delivery path, `deliveries` listing endpoint. **Folded in what was M5** (rule matching engine) rather than doing it as a separate milestone.
 - **M6** — Read-only Admin API: users, alert rules (with owner), events, deliveries (with owner), and per-source ingestion health
+- **M7** — Metrics (Micrometer/Prometheus), OpenAPI/Swagger docs, in-memory rate limiting, Testcontainers-backed integration tests, async delivery dispatch off the scheduler thread, a fail-fast prod profile
 
-## Next: M7 — Hardening
-Observability (Actuator/Micrometer metrics beyond health), integration tests
-with Testcontainers, rate limiting, OpenAPI docs, and a look at whether
-`DeliveryService`'s synchronous retry loop needs to move off the
-request/scheduler thread now that real ingestion can trigger it at volume.
+## Where things stand
+Every milestone from the original plan is done (M5 folded into M4, as noted
+above). Nothing currently queued — natural directions from here would be
+things like locking down the self-service `isAdmin` registration flag
+(invite/allowlist, approval step, or an admin-only user-management endpoint
+instead) before this is ever public-facing, a real frontend, or moving the
+rate limiter to a shared store if this ever runs as more than one instance.
+None of that's decided — just flagging where the obvious gaps are.

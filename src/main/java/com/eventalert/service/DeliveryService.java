@@ -17,16 +17,23 @@ import com.eventalert.repository.DeliveryRepository;
 import com.eventalert.repository.UserRepository;
 import com.eventalert.security.CurrentUserService;
 import com.eventalert.view.DeliveryView;
+import io.micrometer.core.instrument.MeterRegistry;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.Executor;
 import java.util.stream.Collectors;
 
 @Service
 public class DeliveryService {
+
+    private static final Logger log = LoggerFactory.getLogger(DeliveryService.class);
 
     private static final int MAX_ATTEMPTS = 3;
     private static final long RETRY_DELAY_MS = 500;
@@ -37,23 +44,31 @@ public class DeliveryService {
     private final UserRepository userRepository;
     private final NotificationChannelDispatcher notificationChannelDispatcher;
     private final CurrentUserService currentUserService;
+    private final MeterRegistry meterRegistry;
+    private final Executor deliveryExecutor;
 
     public DeliveryService(AlertRuleRepository alertRuleRepository,
                             ChannelRepository channelRepository,
                             DeliveryRepository deliveryRepository,
                             UserRepository userRepository,
                             NotificationChannelDispatcher notificationChannelDispatcher,
-                            CurrentUserService currentUserService) {
+                            CurrentUserService currentUserService,
+                            MeterRegistry meterRegistry,
+                            @Qualifier("deliveryExecutor") Executor deliveryExecutor) {
         this.alertRuleRepository = alertRuleRepository;
         this.channelRepository = channelRepository;
         this.deliveryRepository = deliveryRepository;
         this.userRepository = userRepository;
         this.notificationChannelDispatcher = notificationChannelDispatcher;
         this.currentUserService = currentUserService;
+        this.meterRegistry = meterRegistry;
+        this.deliveryExecutor = deliveryExecutor;
     }
 
     // HTTP-triggered path — relies on CurrentUserService, which reads the
     // authenticated request's SecurityContext. Only safe to call from a controller.
+    // Stays synchronous: the caller (Postman, a real client) expects the delivery
+    // results back in the response body, not a "check back later" flow.
     public List<DeliveryView> sendTestNotification(UUID alertRuleId, TestNotificationRequest request) {
         User user = currentUserService.getCurrentUser();
 
@@ -78,13 +93,16 @@ public class DeliveryService {
     }
 
     // Background-triggered path (called by MatchingService from the ingestion
-    // scheduler) — there is no HTTP request or SecurityContext on that thread, so
-    // this resolves the owning user directly from the rule instead of via
-    // CurrentUserService. Shares the same retry/logging core as the path above.
-    public List<Delivery> deliverForEvent(AlertRule rule, Event event) {
+    // scheduler thread). Unlike sendTestNotification, this is fire-and-forget: each
+    // channel's dispatch (up to MAX_ATTEMPTS with backoff) runs on deliveryExecutor
+    // instead of blocking the scheduler, which needs to move on to the next event/
+    // source rather than stall behind a slow or failing channel. Callers were already
+    // ignoring the return value before this change, so making it void is not a
+    // behavior change for MatchingService.
+    public void deliverForEvent(AlertRule rule, Event event) {
         List<UUID> channelIds = alertRuleRepository.findChannelIds(rule.getId());
         if (channelIds.isEmpty()) {
-            return List.of();
+            return;
         }
 
         User owner = userRepository.findById(rule.getUserId())
@@ -93,13 +111,17 @@ public class DeliveryService {
 
         NotificationMessage message = buildMessage(rule, event);
 
-        List<Delivery> deliveries = new ArrayList<>();
         for (UUID channelId : channelIds) {
             channelRepository.findByIdAndUserId(channelId, owner.getId())
-                    .ifPresent(channel -> deliveries.add(
-                            dispatchWithRetry(rule.getId(), event.getId(), channel, owner, message)));
+                    .ifPresent(channel -> deliveryExecutor.execute(() -> {
+                        try {
+                            dispatchWithRetry(rule.getId(), event.getId(), channel, owner, message);
+                        } catch (Exception e) {
+                            log.warn("Delivery dispatch failed for rule {} channel {}: {}",
+                                    rule.getId(), channel.getId(), e.getMessage());
+                        }
+                    }));
         }
-        return deliveries;
     }
 
     public List<DeliveryView> listForRule(UUID alertRuleId) {
@@ -147,7 +169,14 @@ public class DeliveryService {
         delivery.setAttemptedAt(OffsetDateTime.now());
         delivery.setErrorMessage(sent ? null : lastError);
 
-        return deliveryRepository.save(delivery);
+        deliveryRepository.save(delivery);
+
+        meterRegistry.counter("deliveries.total",
+                "channel", channel.getType().name(),
+                "status", delivery.getStatus().name()
+        ).increment();
+
+        return delivery;
     }
 
     private void sleep(long millis) {

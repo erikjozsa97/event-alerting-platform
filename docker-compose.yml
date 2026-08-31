@@ -44,6 +44,16 @@ services:
       INGESTION_POLL_INTERVAL_MS: ${INGESTION_POLL_INTERVAL_MS:-120000}
     ports:
       - "8080:8080"
+    healthcheck:
+      # eclipse-temurin:*-jre-alpine ships busybox's wget, not curl — this hasn't
+      # been verified against that exact image in this environment, so if it shows
+      # as unhealthy despite the app working fine, that's why: swap for curl or
+      # drop the healthcheck rather than assume the app itself is broken.
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
 volumes:
   pgdata:

@@ -37,7 +37,9 @@ public class AuthService {
         user.setId(UUID.randomUUID());
         user.setEmail(request.email());
         user.setPasswordHash(passwordEncoder.encode(request.password()));
-        user.setRole(Role.USER);
+        // Self-service admin promotion at registration — see the README for the
+        // security tradeoff this implies.
+        user.setRole(request.isAdmin() ? Role.ADMIN : Role.USER);
         user.setEnabled(true);
         user.setCreatedAt(OffsetDateTime.now());
 
