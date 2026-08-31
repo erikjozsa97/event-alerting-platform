@@ -1,7 +1,5 @@
 package com.eventalert.model;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
-
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
@@ -10,11 +8,10 @@ public class User {
     private UUID id;
     private String email;
 
-    // No view/DTO layer in this project, so this model is returned directly
-    // from controllers. @JsonIgnore is the safety net that would otherwise
-    // be the view layer's job — without it, every endpoint that returns a
-    // User (register now, admin user listing later) would leak the hash.
-    @JsonIgnore
+    // Controllers never return this model directly — com.eventalert.view.UserView
+    // is what leaves the API, and it simply doesn't have this field. That's the
+    // only thing preventing the hash from leaking, so don't add a serializer
+    // that returns User (or any future model with a secret field) as-is.
     private String passwordHash;
 
     private Role role;

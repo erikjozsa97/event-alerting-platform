@@ -9,7 +9,6 @@ import com.eventalert.model.Role;
 import com.eventalert.model.User;
 import com.eventalert.repository.UserRepository;
 import com.eventalert.security.JwtService;
-import org.springframework.lang.NonNull;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -29,7 +28,7 @@ public class AuthService {
         this.jwtService = jwtService;
     }
 
-    public User register(@NonNull RegisterRequest request) {
+    public User register(RegisterRequest request) {
         if (userRepository.existsByEmail(request.email())) {
             throw new EmailAlreadyExistsException(request.email());
         }
@@ -45,7 +44,7 @@ public class AuthService {
         return userRepository.save(user);
     }
 
-    public AuthResponse login(@NonNull LoginRequest request) {
+    public AuthResponse login(LoginRequest request) {
         User user = userRepository.findByEmail(request.email())
                 .orElseThrow(InvalidCredentialsException::new);
 

@@ -5,6 +5,7 @@ import com.eventalert.model.LoginRequest;
 import com.eventalert.model.RegisterRequest;
 import com.eventalert.model.User;
 import com.eventalert.service.AuthService;
+import com.eventalert.view.UserView;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -24,9 +25,9 @@ public class AuthController {
     }
 
     @PostMapping("/register")
-    public ResponseEntity<User> register(@Valid @RequestBody RegisterRequest request) {
+    public ResponseEntity<UserView> register(@Valid @RequestBody RegisterRequest request) {
         User user = authService.register(request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(user);
+        return ResponseEntity.status(HttpStatus.CREATED).body(UserView.from(user));
     }
 
     @PostMapping("/login")

@@ -6,7 +6,6 @@ import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Service;
 
 import javax.crypto.SecretKey;
@@ -20,13 +19,13 @@ public class JwtService {
     private final SecretKey key;
     private final long expirationMs;
 
-    public JwtService(@NonNull @Value("${security.jwt.secret}") String secret,
-                      @Value("${security.jwt.expiration-ms}") long expirationMs) {
+    public JwtService(@Value("${security.jwt.secret}") String secret,
+                       @Value("${security.jwt.expiration-ms}") long expirationMs) {
         this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
         this.expirationMs = expirationMs;
     }
 
-    public AuthResponse issueToken(@NonNull User user) {
+    public AuthResponse issueToken(User user) {
         Instant now = Instant.now();
         Instant expiry = now.plusMillis(expirationMs);
 
@@ -42,7 +41,7 @@ public class JwtService {
         return new AuthResponse(token, "Bearer", expirationMs / 1000);
     }
 
-    public Claims parseClaims(@NonNull String token) {
+    public Claims parseClaims(String token) {
         return Jwts.parser()
                 .verifyWith(key)
                 .build()

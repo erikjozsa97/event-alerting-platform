@@ -74,7 +74,9 @@
         <dependency>
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>
-            <scope>runtime</scope>
+            <!-- No <scope>runtime</scope>: AlertRuleRepository/ChannelRepository reference
+                 org.postgresql.util.PGobject directly to write jsonb columns, so the
+                 driver needs to be on the compile classpath, not just at runtime. -->
         </dependency>
 
         <dependency>

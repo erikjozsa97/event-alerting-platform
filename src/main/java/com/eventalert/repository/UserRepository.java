@@ -5,8 +5,6 @@ import com.eventalert.model.User;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
-import org.springframework.lang.NonNull;
-import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Repository;
 
 import java.sql.ResultSet;
@@ -26,7 +24,7 @@ public class UserRepository {
         this.jdbc = jdbc;
     }
 
-    public User save(@NonNull User user) {
+    public User save(User user) {
         String sql = """
                 INSERT INTO users (id, email, password_hash, role, enabled, created_at)
                 VALUES (:id, :email, :passwordHash, :role, :enabled, :createdAt)
@@ -35,27 +33,26 @@ public class UserRepository {
         return user;
     }
 
-    public Optional<User> findByEmail(@NonNull String email) {
+    public Optional<User> findByEmail(String email) {
         String sql = "SELECT * FROM users WHERE email = :email";
         var params = new MapSqlParameterSource("email", email);
         return jdbc.query(sql, params, USER_ROW_MAPPER).stream().findFirst();
     }
 
-    public Optional<User> findById(@NonNull UUID id) {
+    public Optional<User> findById(UUID id) {
         String sql = "SELECT * FROM users WHERE id = :id";
         var params = new MapSqlParameterSource("id", id);
         return jdbc.query(sql, params, USER_ROW_MAPPER).stream().findFirst();
     }
 
-    public boolean existsByEmail(@Nullable String email) {
+    public boolean existsByEmail(String email) {
         String sql = "SELECT COUNT(*) FROM users WHERE email = :email";
         var params = new MapSqlParameterSource("email", email);
         Integer count = jdbc.queryForObject(sql, params, Integer.class);
         return count != null && count > 0;
     }
 
-    @NonNull
-    private static MapSqlParameterSource toParams(@NonNull User user) {
+    private static MapSqlParameterSource toParams(User user) {
         return new MapSqlParameterSource()
                 .addValue("id", user.getId())
                 .addValue("email", user.getEmail())
@@ -65,8 +62,7 @@ public class UserRepository {
                 .addValue("createdAt", user.getCreatedAt());
     }
 
-    @NonNull
-    private static User mapRow(@NonNull ResultSet rs, int rowNum) throws SQLException {
+    private static User mapRow(ResultSet rs, int rowNum) throws SQLException {
         User user = new User();
         user.setId(UUID.fromString(rs.getString("id")));
         user.setEmail(rs.getString("email"));
